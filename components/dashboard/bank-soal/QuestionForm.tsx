@@ -1,19 +1,22 @@
 "use client";
 
-import { useState } from "react";
-import { Save, Plus, Trash2 } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Save, Plus, Trash2, Tag, PlayCircle } from "lucide-react";
 import { createQuestion, updateQuestion } from "@/app/actions/questions";
 import { useRouter } from "next/navigation";
 import { simulateQuestionScore } from "@/app/actions/exams";
 
 import StatusBadge from "../StatusBadge";
+import TopicModal from "./TopicModal";
+import type { TopicRecord } from "@/app/actions/topics";
 
 interface QuestionFormProps {
-    initialData?: any; // Replace with proper type from valid schema inference
+    initialData?: any;
     userRole?: string;
+    existingTopics?: TopicRecord[];
 }
 
-export default function QuestionForm({ initialData, userRole = "pembina" }: QuestionFormProps) {
+export default function QuestionForm({ initialData, userRole = "pembina", existingTopics = [] }: QuestionFormProps) {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [type, setType] = useState(initialData?.type || "MULTIPLE_CHOICE");
@@ -46,6 +49,20 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
     // Simulation State
     const [simulatedAnswer, setSimulatedAnswer] = useState("");
     const [simulationResult, setSimulationResult] = useState<any>(null);
+
+    const topicNames = existingTopics.map((t) => t.name);
+    const [topicsList, setTopicsList] = useState<TopicRecord[]>(existingTopics);
+    const [topicChoice, setTopicChoice] = useState<string>(() => {
+        if (initialData?.topic && topicNames.includes(initialData.topic)) return initialData.topic;
+        return topicNames[0] ?? "";
+    });
+    const [showTopicModal, setShowTopicModal] = useState(false);
+
+    useEffect(() => {
+        setTopicsList(existingTopics);
+        const names = existingTopics.map((t) => t.name);
+        setTopicChoice((prev) => (names.includes(prev) ? prev : names[0] ?? ""));
+    }, [existingTopics]);
 
     // --- Handlers ---
 
@@ -131,8 +148,11 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
     };
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
-        // ... existing submit logic
         e.preventDefault();
+        if (topicsList.length === 0 || !topicChoice) {
+            alert("Tambahkan minimal satu topik lewat tombol Kelola sebelum menyimpan.");
+            return;
+        }
         setIsLoading(true);
         const formData = new FormData(e.currentTarget);
 
@@ -143,6 +163,8 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
         formData.set("weight", weight.toString());
         formData.set("answer_keys", JSON.stringify(answerKeys));
         formData.set("rubric", JSON.stringify(rubric));
+
+        formData.set("topic", topicChoice || "General");
 
         let result;
         if (initialData?.id) {
@@ -193,18 +215,40 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
 
                     <div>
                         <label className="block text-sm font-medium text-text-dark mb-1">Topic</label>
-                        {/* ... existing topic select ... */}
-                        <select
-                            name="topic"
-                            className="w-full px-3 py-2 border border-neutral-warm/30 rounded-lg"
-                            defaultValue={initialData?.topic}
-                        >
-                            <option value="Geology">Geology</option>
-                            <option value="Meteorology">Meteorology</option>
-                            <option value="Astronomy">Astronomy</option>
-                            <option value="Oceanography">Oceanography</option>
-                        </select>
+                        <div className="flex gap-2">
+                            <select
+                                className="flex-1 px-3 py-2 border border-neutral-warm/30 rounded-lg bg-white"
+                                value={topicChoice}
+                                onChange={(e) => setTopicChoice(e.target.value)}
+                                aria-label="Pilih topik"
+                            >
+                                {topicsList.length === 0 ? (
+                                    <option value="">Belum ada topik</option>
+                                ) : (
+                                    topicsList.map((t) => (
+                                        <option key={t.id} value={t.name}>{t.name}</option>
+                                    ))
+                                )}
+                            </select>
+                            <button
+                                type="button"
+                                onClick={() => setShowTopicModal(true)}
+                                className="inline-flex items-center gap-2 px-3 py-2 border border-neutral-warm/30 rounded-lg hover:bg-neutral-light/50 text-text-dark"
+                                title="Kelola topik"
+                            >
+                                <Tag className="w-4 h-4" />
+                                Kelola
+                            </button>
+                        </div>
+                        <p className="text-xs text-text-dark/40 mt-1">
+                            Tambah atau edit topik lewat tombol Kelola.
+                        </p>
                     </div>
+                    <TopicModal
+                        open={showTopicModal}
+                        onClose={() => setShowTopicModal(false)}
+                        onTopicsChange={setTopicsList}
+                    />
                     <div>
                         <label className="block text-sm font-medium text-text-dark mb-1">Subtopic</label>
                         <input
@@ -449,29 +493,34 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
                     <span className="bg-accent-earthy/10 text-accent-earthy px-2 py-1 rounded text-sm">Preview</span>
                     Scoring Simulation
                 </h3>
-                <p className="text-sm text-text-dark/60">Test your grading logic before saving.</p>
+                <p className="text-sm text-text-dark/60">Uji logika penilaian sebelum menyimpan soal.</p>
 
                 <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div>
-                        <label className="block text-sm font-medium text-text-dark mb-1">Test Answer</label>
+                        <label className="block text-sm font-medium text-text-dark mb-1">Jawaban Uji</label>
                         {type === "MULTIPLE_CHOICE" ? (
                             <select
                                 className="w-full px-3 py-2 border border-neutral-warm/30 rounded-lg text-sm bg-white"
                                 value={simulatedAnswer}
                                 onChange={(e) => setSimulatedAnswer(e.target.value)}
                             >
-                                <option value="">Select Option</option>
-                                {options.map((opt: any, i: number) => (
-                                    <option key={i} value={opt.id?.toString() || i.toString()}>
-                                        Option {String.fromCharCode(65 + i)}
-                                    </option>
-                                ))}
+                                <option value="">Pilih opsi jawaban</option>
+                                {options.map((opt: any, i: number) => {
+                                    const label = opt.content
+                                        ? `${String.fromCharCode(65 + i)}. ${String(opt.content).slice(0, 60)}${(opt.content?.length || 0) > 60 ? "…" : ""}`
+                                        : `Option ${String.fromCharCode(65 + i)}`;
+                                    return (
+                                        <option key={i} value={opt.id?.toString() || i.toString()}>
+                                            {label}
+                                        </option>
+                                    );
+                                })}
                             </select>
                         ) : type === "ESSAY" ? (
                             <textarea
                                 className="w-full px-3 py-2 border border-neutral-warm/30 rounded-lg text-sm"
                                 rows={3}
-                                placeholder="Type a dummy essay answer..."
+                                placeholder="Ketik contoh jawaban essay untuk ditest..."
                                 value={simulatedAnswer}
                                 onChange={(e) => setSimulatedAnswer(e.target.value)}
                             />
@@ -479,7 +528,7 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
                             <input
                                 type="text"
                                 className="w-full px-3 py-2 border border-neutral-warm/30 rounded-lg text-sm"
-                                placeholder="Type a dummy short answer..."
+                                placeholder="Ketik contoh jawaban singkat untuk ditest..."
                                 value={simulatedAnswer}
                                 onChange={(e) => setSimulatedAnswer(e.target.value)}
                             />
@@ -488,9 +537,9 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
                             type="button"
                             onClick={handleSimulate}
                             disabled={isLoading}
-                            className="mt-3 w-full px-4 py-2 bg-text-dark text-white rounded-lg hover:bg-black text-sm font-bold disabled:opacity-50"
+                            className="mt-3 w-full px-4 py-2 bg-accent-earthy text-white rounded-lg hover:bg-accent-earthy/90 text-sm font-bold disabled:opacity-50"
                         >
-                            {isLoading ? "Simulating..." : "Calculate Score"}
+                            {isLoading ? "Menghitung..." : "Hitung Skor"}
                         </button>
                     </div>
 
@@ -498,30 +547,30 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
                         {simulationResult ? (
                             <div className="space-y-3">
                                 <div className="flex justify-between items-center border-b border-neutral-warm/10 pb-2">
-                                    <span className="text-sm font-medium text-text-dark/70">Success:</span>
+                                    <span className="text-sm font-medium text-text-dark/70">Status Simulasi:</span>
                                     <span className={`font-bold px-2 py-0.5 rounded text-xs ${simulationResult.success ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}`}>
-                                        {simulationResult.success ? "OK" : "Error"}
+                                        {simulationResult.success ? "Berhasil" : "Gagal"}
                                     </span>
                                 </div>
                                 {simulationResult.result && (
                                     <>
                                         <div className="flex justify-between items-center">
-                                            <span className="text-sm text-text-dark/70">Earned Score:</span>
+                                            <span className="text-sm text-text-dark/70">Skor:</span>
                                             <span className="font-bold text-accent-earthy text-lg">
                                                 {typeof simulationResult.result.earned === 'number' ? simulationResult.result.earned.toFixed(2) : simulationResult.result.earned}
                                                 <span className="text-sm text-text-dark/40 font-normal ml-1">/ {weight}</span>
                                             </span>
                                         </div>
                                         <div className="flex justify-between items-center">
-                                            <span className="text-sm text-text-dark/70">Is Correct:</span>
+                                            <span className="text-sm text-text-dark/70">Benar:</span>
                                             <span className={`font-bold ${simulationResult.result.isCorrect ? "text-green-600" : "text-red-500"}`}>
-                                                {simulationResult.result.isCorrect ? "Yes" : "No"}
+                                                {simulationResult.result.isCorrect ? "Ya" : "Tidak"}
                                             </span>
                                         </div>
                                         <div>
-                                            <span className="text-sm text-text-dark/70 block mb-1">Feedback:</span>
+                                            <span className="text-sm text-text-dark/70 block mb-1">Umpan Balik:</span>
                                             <div className="text-xs bg-neutral-50 p-2 rounded border border-neutral-warm/10 font-mono whitespace-pre-wrap max-h-32 overflow-y-auto">
-                                                {simulationResult.result.feedback || "No specific feedback generated."}
+                                                {simulationResult.result.feedback || "Tidak ada umpan balik khusus."}
                                             </div>
                                         </div>
                                     </>
@@ -531,8 +580,9 @@ export default function QuestionForm({ initialData, userRole = "pembina" }: Ques
                                 )}
                             </div>
                         ) : (
-                            <div className="h-full flex flex-col items-center justify-center text-text-dark/30 text-sm">
-                                <span>Result will appear here...</span>
+                            <div className="h-full min-h-[150px] flex flex-col items-center justify-center text-text-dark/40 text-sm gap-2">
+                                <PlayCircle className="w-10 h-10 text-text-dark/20" />
+                                <span>Pilih jawaban dan klik &quot;Hitung Skor&quot;</span>
                             </div>
                         )}
                     </div>

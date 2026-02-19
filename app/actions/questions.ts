@@ -2,18 +2,13 @@
 
 import { db } from "@/lib/db";
 import { questions, options as optionsTable, users } from "@/lib/schema";
-import { eq, desc, inArray, like, and } from "drizzle-orm";
+import { eq, desc, like, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-
-// ... imports
+import { normalizeTopic } from "@/lib/utils";
 
 export async function getQuestions(filter?: { topic?: string; type?: string; search?: string; status?: string }) {
-    const session = await auth();
-    const currentUser = await db.query.users.findFirst({
-        where: eq(users.id, parseInt(session?.user?.id || "0")),
-    });
+    await auth();
 
     const conditions = [];
 
@@ -23,11 +18,11 @@ export async function getQuestions(filter?: { topic?: string; type?: string; sea
     }
     // Filter by type
     if (filter?.type && filter.type !== "All") {
-        conditions.push(eq(questions.type, filter.type as any));
+        conditions.push(eq(questions.type, filter.type as "MULTIPLE_CHOICE" | "SHORT_ANSWER" | "ESSAY"));
     }
     // Filter by status
     if (filter?.status && filter.status !== "All") {
-        conditions.push(eq(questions.status, filter.status as any));
+        conditions.push(eq(questions.status, filter.status as "DRAFT" | "PENDING" | "PUBLISHED" | "ARCHIVED"));
     }
     // Filter by search
     if (filter?.search) {
@@ -44,16 +39,96 @@ export async function getQuestions(filter?: { topic?: string; type?: string; sea
         where: conditions.length > 0 ? and(...conditions) : undefined,
         orderBy: [desc(questions.createdAt)],
         with: {
-            // @ts-ignore - CreatedBy relation might not be defined in schema relations yet but column exists
-            // We can add relation later if needed for displaying author name
         }
     });
 
-    // Manual join for author name if needed, or query separate. 
-    // For now return data.
     return data;
 }
 
+const DEFAULT_PAGE_SIZE = 10;
+const MIN_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
+
+export interface QuestionFilters {
+    topic?: string;
+    type?: string;
+    search?: string;
+    status?: string;
+    difficulty?: string;
+    page?: number;
+    limit?: number;
+}
+
+export interface GetQuestionsFilteredResult {
+    data: Awaited<ReturnType<typeof getQuestions>>;
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+export async function getQuestionsFiltered(filters: QuestionFilters = {}): Promise<GetQuestionsFilteredResult> {
+    const { topic, type, search, status, difficulty, page = 1, limit: rawLimit = DEFAULT_PAGE_SIZE } = filters;
+    const limit = Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, rawLimit));
+
+    const conditions = [];
+    if (topic && topic !== "All") conditions.push(eq(questions.topic, topic));
+    if (type && type !== "All") conditions.push(eq(questions.type, type as "MULTIPLE_CHOICE" | "SHORT_ANSWER" | "ESSAY"));
+    if (status && status !== "All") conditions.push(eq(questions.status, status as "DRAFT" | "PENDING" | "PUBLISHED" | "ARCHIVED"));
+    if (difficulty && difficulty !== "All") conditions.push(eq(questions.difficulty, difficulty as "EASY" | "MEDIUM" | "HARD"));
+    if (search?.trim()) conditions.push(like(questions.content, `%${search.trim()}%`));
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(questions)
+        .where(whereClause);
+    const total = Number(countRow?.count ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (Math.max(1, page) - 1) * limit;
+
+    const data = await db.query.questions.findMany({
+        where: whereClause,
+        orderBy: [desc(questions.createdAt)],
+        limit,
+        offset,
+    });
+
+    return { data, total, page: Math.max(1, page), limit, totalPages };
+}
+
+export interface GetPendingQuestionsFilteredResult {
+    data: Awaited<ReturnType<typeof getQuestions>>;
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+export async function getPendingQuestionsFiltered(filters: { page?: number; limit?: number } = {}): Promise<GetPendingQuestionsFilteredResult> {
+    const { page = 1, limit: rawLimit = DEFAULT_PAGE_SIZE } = filters;
+    const limit = Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, rawLimit));
+
+    const whereClause = eq(questions.status, "PENDING");
+
+    const [countRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(questions)
+        .where(whereClause);
+    const total = Number(countRow?.count ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (Math.max(1, page) - 1) * limit;
+
+    const data = await db.query.questions.findMany({
+        where: whereClause,
+        orderBy: [desc(questions.createdAt)],
+        limit,
+        offset,
+    });
+
+    return { data, total, page: Math.max(1, page), limit, totalPages };
+}
 
 export async function getQuestionById(id: number) {
     try {
@@ -72,7 +147,7 @@ export async function getQuestionById(id: number) {
     }
 }
 
-export async function createQuestion(prevState: any, formData: FormData) {
+export async function createQuestion(_prevState: unknown, formData: FormData) {
     const session = await auth();
     if (!session?.user?.id) {
         return { success: false, message: "Unauthorized" };
@@ -94,10 +169,11 @@ export async function createQuestion(prevState: any, formData: FormData) {
         finalStatus = "PENDING"; // Pembina cannot publish directly
     }
 
+    const topicRaw = (formData.get("topic") as string) || "";
     const rawData = {
         content: formData.get("content") as string,
         type: formData.get("type") as "MULTIPLE_CHOICE" | "SHORT_ANSWER" | "ESSAY",
-        topic: formData.get("topic") as string,
+        topic: normalizeTopic(topicRaw.trim()) || "General",
         subtopic: formData.get("subtopic") as string,
         difficulty: formData.get("difficulty") as "EASY" | "MEDIUM" | "HARD",
         source: formData.get("source") as string,
@@ -163,10 +239,11 @@ export async function updateQuestion(id: number, formData: FormData) {
         finalStatus = "PENDING"; // Pembina cannot publish directly
     }
 
+    const topicRaw = (formData.get("topic") as string) || "";
     const rawData = {
         content: formData.get("content") as string,
         type: formData.get("type") as "MULTIPLE_CHOICE" | "SHORT_ANSWER" | "ESSAY",
-        topic: formData.get("topic") as string,
+        topic: normalizeTopic(topicRaw.trim()) || "General",
         subtopic: formData.get("subtopic") as string,
         difficulty: formData.get("difficulty") as "EASY" | "MEDIUM" | "HARD",
         source: formData.get("source") as string,
@@ -231,6 +308,7 @@ export async function updateQuestionStatus(id: number, status: "DRAFT" | "PENDIN
         revalidatePath("/dashboard/bank-soal");
         return { success: true, message: "Status updated." };
     } catch (error) {
+        console.error("Failed to update question status:", error);
         return { success: false, message: "Failed to update status." };
     }
 }

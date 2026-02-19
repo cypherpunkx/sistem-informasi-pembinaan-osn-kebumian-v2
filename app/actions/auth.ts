@@ -6,20 +6,19 @@ import { db } from "@/lib/db";
 import { users } from "@/lib/schema";
 import { hash } from "bcryptjs";
 import { eq } from "drizzle-orm";
-import { parse, object, string, email, minLength, safeParse, pipe, minLength as vMinLength, optional } from "valibot";
+import { object, string, email, safeParse, pipe, minLength as vMinLength, optional } from "valibot";
 
 // Helper to validate schema
 const RegisterSchema = object({
     name: pipe(string(), vMinLength(1, "Name is required")),
     email: pipe(string(), email("Invalid email address")),
     password: pipe(string(), vMinLength(6, "Password must be at least 6 characters")),
-    role: string(), // We'll validate strict enum values if needed or trust the select for now (safeguard in DB)
     school: optional(string()),
     contact: optional(string()),
     competitionCategory: optional(string()),
 });
 
-export async function register(prevState: any, formData: FormData) {
+export async function register(prevState: unknown, formData: FormData) {
     const rawData = Object.fromEntries(formData.entries());
 
     // Safe parse with Valibot
@@ -31,7 +30,8 @@ export async function register(prevState: any, formData: FormData) {
         };
     }
 
-    const { name, email, password, role, school, contact, competitionCategory } = result.output;
+    const { name, email, password, school, contact, competitionCategory } = result.output;
+    const role = "peserta" as const;
 
     try {
         // Check if user exists
@@ -52,7 +52,7 @@ export async function register(prevState: any, formData: FormData) {
             name,
             email,
             password: hashedPassword,
-            role: role as "admin" | "pembina" | "peserta",
+            role,
             school: school || null,
             contact: contact || null,
             competitionCategory: competitionCategory || null,
@@ -157,7 +157,12 @@ export async function updateProfile(formData: {
         }
 
         // Prepare update data
-        const updateData: any = {
+        const updateData: {
+            name: string;
+            school: string | null;
+            password?: string;
+            email?: string;
+        } = {
             name: formData.name,
             school: formData.school || null,
         };
@@ -198,10 +203,6 @@ export async function updateProfile(formData: {
             .set(updateData)
             .where(eq(users.email, session.user.email));
 
-        console.log("=== Profile Updated ===");
-        console.log("User:", session.user.email);
-        console.log("Updated fields:", Object.keys(updateData));
-        console.log("=======================");
 
         return { success: true, message: "Profile updated successfully!" };
     } catch (error) {

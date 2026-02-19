@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { getExamHistory } from "@/app/actions/exams";
-import { ChevronLeft, ChevronRight } from "lucide-react";
+import { ChevronLeft, ChevronRight, Award, Target, TrendingUp } from "lucide-react";
 
 import FeedbackBadge from "./FeedbackBadge";
 
@@ -11,6 +11,7 @@ interface ExamHistoryItem {
     date: Date | null;
     examTitle: string | null;
     score: number | null;
+    totalQuestions?: number | null;
     status: "COMPLETED" | "IN_PROGRESS" | null;
     feedback: string | null;
 }
@@ -23,7 +24,29 @@ interface PaginationData {
     totalPages: number;
 }
 
-export default function ExamHistoryTable({ initialData }: { initialData: PaginationData }) {
+/** Warna score berdasarkan range: ≥75 hijau, 60-74 oranye, <60 merah. Kiri = score, kanan = jumlah soal (opsional). */
+function scoreDisplay(score: number | null, totalQuestions?: number | null) {
+    if (score == null) return { scoreText: "-", totalLabel: null, className: "text-text-dark/60" };
+    const totalLabel = totalQuestions && totalQuestions > 0 ? `${totalQuestions} soal` : null;
+    if (score >= 75) return { scoreText: String(score), totalLabel, className: "text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded" };
+    if (score >= 60) return { scoreText: String(score), totalLabel, className: "text-amber-700 font-bold bg-amber-50 px-2 py-0.5 rounded" };
+    return { scoreText: String(score), totalLabel, className: "text-red-700 font-bold bg-red-50 px-2 py-0.5 rounded" };
+}
+
+interface SummaryStats {
+    totalCompleted: number;
+    averageScore: number;
+    bestScore: number;
+}
+
+export default function ExamHistoryTable({
+    initialData,
+    summary,
+}: {
+    initialData: PaginationData;
+    /** Opsional: ringkasan untuk ditampilkan di atas tabel. */
+    summary?: SummaryStats | null;
+}) {
     const [currentPage, setCurrentPage] = useState(initialData.page);
     const [data, setData] = useState<ExamHistoryItem[]>(initialData.data);
     const [totalPages, setTotalPages] = useState(initialData.totalPages);
@@ -59,6 +82,40 @@ export default function ExamHistoryTable({ initialData }: { initialData: Paginat
                     Total: {total} exams
                 </div>
             </div>
+
+            {/* Mini summary: total completed, avg score, best score */}
+            {summary && (summary.totalCompleted > 0 || summary.averageScore > 0 || summary.bestScore > 0) && (
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-5 p-4 rounded-lg bg-neutral-light/50 border border-neutral-warm/20">
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-blue-100 text-blue-600">
+                            <Target className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <p className="text-xs font-medium text-text-dark/60 uppercase tracking-wide">Exam selesai</p>
+                            <p className="text-lg font-bold text-text-dark">{summary.totalCompleted}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-amber-100 text-amber-600">
+                            <TrendingUp className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <p className="text-xs font-medium text-text-dark/60 uppercase tracking-wide">Rata-rata skor</p>
+                            <p className="text-lg font-bold text-text-dark">{summary.averageScore}</p>
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-emerald-100 text-emerald-600">
+                            <Award className="w-5 h-5" />
+                        </div>
+                        <div>
+                            <p className="text-xs font-medium text-text-dark/60 uppercase tracking-wide">Skor terbaik</p>
+                            <p className="text-lg font-bold text-text-dark">{summary.bestScore}</p>
+                        </div>
+                    </div>
+                </div>
+            )}
+
             <div className="overflow-x-auto">
                 <table className="min-w-full divide-y divide-neutral-warm/20">
                     <thead className="bg-neutral-light">
@@ -93,8 +150,18 @@ export default function ExamHistoryTable({ initialData }: { initialData: Paginat
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-dark">
                                         {item.examTitle || "Unknown Exam"}
                                     </td>
-                                    <td className="px-6 py-4 whitespace-nowrap text-sm text-text-dark">
-                                        {item.status === "COMPLETED" ? item.score : "-"}
+                                    <td className="px-6 py-4 whitespace-nowrap">
+                                        {item.status === "COMPLETED" ? (() => {
+                                            const { scoreText, totalLabel, className } = scoreDisplay(item.score, item.totalQuestions);
+                                            return (
+                                                <span className="inline-flex items-baseline gap-2">
+                                                    <span className={`text-base ${className}`}>{scoreText}</span>
+                                                    {totalLabel && <span className="text-xs text-text-dark/50">{totalLabel}</span>}
+                                                </span>
+                                            );
+                                        })() : (
+                                            <span className="text-sm text-text-dark/60">-</span>
+                                        )}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm">
                                         <span className={`px-2 py-1 inline-flex text-xs leading-5 font-semibold rounded-full 
@@ -106,7 +173,7 @@ export default function ExamHistoryTable({ initialData }: { initialData: Paginat
                                     </td>
                                     <td className="px-6 py-4 text-sm">
                                         {item.feedback ? (
-                                            <FeedbackBadge feedback={item.feedback} />
+                                            <FeedbackBadge feedback={item.feedback} feedbackDate={item.date} />
                                         ) : (
                                             <span className="text-text-dark/40 italic text-xs">No feedback</span>
                                         )}
@@ -115,7 +182,7 @@ export default function ExamHistoryTable({ initialData }: { initialData: Paginat
                             ))
                         ) : (
                             <tr>
-                                <td colSpan={4} className="px-6 py-10 text-center text-text-dark/50 italic">
+                                <td colSpan={5} className="px-6 py-10 text-center text-text-dark/50 italic">
                                     No exam history found. Start a practice session!
                                 </td>
                             </tr>

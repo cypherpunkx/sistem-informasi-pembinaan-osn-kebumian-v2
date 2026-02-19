@@ -155,8 +155,9 @@ export async function getUserById(userId: number) {
 
         if (!user) return null;
 
-        // Don't return password
+        // Don't return password (omit from response)
         const { password, ...userWithoutPassword } = user;
+        void password;
         return userWithoutPassword;
     } catch (error) {
         console.error("Failed to fetch user:", error);
@@ -265,7 +266,7 @@ export async function updateUser(userId: number, userData: Partial<UserData>) {
         }
 
         // Prepare update data
-        const updateData: any = {};
+        const updateData: { name?: string; email?: string; role?: "admin" | "pembina" | "peserta"; school?: string | null; contact?: string | null; competitionCategory?: string | null; password?: string } = {};
 
         if (userData.name) updateData.name = userData.name;
         if (userData.email) updateData.email = userData.email;

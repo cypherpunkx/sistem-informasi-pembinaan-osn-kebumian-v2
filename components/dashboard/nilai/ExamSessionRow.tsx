@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Eye, MessageSquare, CheckCircle, XCircle } from "lucide-react";
+import { Eye, CheckCircle, XCircle } from "lucide-react";
 import ExamSessionDetail from "./ExamSessionDetail";
 
 interface SessionData {
@@ -21,9 +21,10 @@ interface SessionData {
 
 interface ExamSessionRowProps {
     session: SessionData;
+    onFeedbackSaved?: () => void;
 }
 
-export default function ExamSessionRow({ session }: ExamSessionRowProps) {
+export default function ExamSessionRow({ session, onFeedbackSaved }: ExamSessionRowProps) {
     const [showDetail, setShowDetail] = useState(false);
 
     const formatDate = (date: Date | null) => {
@@ -37,12 +38,14 @@ export default function ExamSessionRow({ session }: ExamSessionRowProps) {
         });
     };
 
-    const getScoreBadgeColor = (score: number | null) => {
-        if (score === null) return "bg-gray-100 text-gray-600";
-        if (score >= 80) return "bg-green-100 text-green-700";
-        if (score >= 60) return "bg-yellow-100 text-yellow-700";
-        return "bg-red-100 text-red-700";
+    /** Kiri = skor, kanan = jumlah soal (tanpa slash). */
+    const getScoreDisplay = (score: number | null, totalQuestions: number | null) => {
+        if (score === null) return { scoreText: "—", totalLabel: null };
+        const totalLabel = totalQuestions && totalQuestions > 0 ? `${totalQuestions} soal` : null;
+        return { scoreText: String(score), totalLabel };
     };
+
+    const scoreDisplay = getScoreDisplay(session.score, session.totalQuestions);
 
     return (
         <>
@@ -64,15 +67,18 @@ export default function ExamSessionRow({ session }: ExamSessionRowProps) {
                     )}
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap">
-                    <span
-                        className={`inline-flex items-center px-3 py-1 rounded-full text-sm font-semibold ${getScoreBadgeColor(
-                            session.score
-                        )}`}
-                    >
-                        {session.score ?? "N/A"}
-                    </span>
-                    <div className="text-xs text-text-dark/60 mt-1">
-                        {session.correctAnswers}/{session.totalQuestions} correct
+                    <div className="inline-flex flex-col gap-1">
+                        <span className="inline-flex items-baseline gap-2 flex-wrap">
+                            <span className="font-semibold text-text-dark">{scoreDisplay.scoreText}</span>
+                            {scoreDisplay.totalLabel && (
+                                <span className="text-xs text-text-dark/50">{scoreDisplay.totalLabel}</span>
+                            )}
+                        </span>
+                        {session.correctAnswers != null && session.totalQuestions != null && (
+                            <span className="text-xs text-text-dark/60">
+                                {session.correctAnswers} / {session.totalQuestions} benar
+                            </span>
+                        )}
                     </div>
                 </td>
                 <td className="px-6 py-4 whitespace-nowrap text-sm text-text-dark">{formatDate(session.endTime)}</td>
@@ -100,7 +106,13 @@ export default function ExamSessionRow({ session }: ExamSessionRowProps) {
                 </td>
             </tr>
 
-            {showDetail && <ExamSessionDetail sessionId={session.sessionId} onClose={() => setShowDetail(false)} />}
+            {showDetail && (
+                <ExamSessionDetail
+                    sessionId={session.sessionId}
+                    onClose={() => setShowDetail(false)}
+                    onFeedbackSaved={onFeedbackSaved}
+                />
+            )}
         </>
     );
 }

@@ -1,0 +1,39 @@
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":1,"reused":false},"timestamp":1771469438749,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":2,"reused":true},"timestamp":1771469439635,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":3,"reused":true},"timestamp":1771469439999,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":4,"reused":true},"timestamp":1771469440390,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":5,"reused":true},"timestamp":1771469448697,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":6,"reused":true},"timestamp":1771469458734,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":7,"reused":true},"timestamp":1771469469311,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":8,"reused":true},"timestamp":1771469470325,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":9,"reused":true},"timestamp":1771469470825,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":10,"reused":true},"timestamp":1771469471239,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":1,"reused":false},"timestamp":1771469495325,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"exams.ts:getReportData","message":"getReportData start","data":{},"timestamp":1771469500358,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469500360,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getReportData","message":"getReportData start","data":{},"timestamp":1771469509397,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469509398,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getReportData","message":"getReportData start","data":{},"timestamp":1771469510704,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469510704,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getReportData","message":"getReportData start","data":{},"timestamp":1771469513601,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469513602,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getReportData","message":"getReportData start","data":{},"timestamp":1771469514485,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469514487,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469524441,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469524619,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469535994,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"exams.ts:getDistinctExamCategories","message":"getDistinctExamCategories start","data":{},"timestamp":1771469536049,"hypothesisId":"H3"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":2,"reused":true},"timestamp":1771469538545,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":3,"reused":true},"timestamp":1771469539383,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":4,"reused":true},"timestamp":1771469543109,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":5,"reused":true},"timestamp":1771469543622,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":6,"reused":true},"timestamp":1771469545220,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"lib/db.ts:init","message":"db module eval","data":{"poolInitCount":7,"reused":true},"timestamp":1771469547752,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"ExamInterface.tsx:setTimeLeft updater","message":"timer expired in setState updater, calling doSubmit","data":{"prev":1},"timestamp":1771490338085,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"ExamInterface.tsx:setTimeLeft updater","message":"timer expired in setState updater, calling doSubmit","data":{"prev":1},"timestamp":1771490338093,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"ExamInterface.tsx:doSubmit","message":"doSubmit entered","data":{"hasSessionId":true},"timestamp":1771490338087,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"ExamInterface.tsx:doSubmit","message":"doSubmit entered","data":{"hasSessionId":true},"timestamp":1771490338093,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"ExamInterface.tsx:before router.push","message":"doSubmit about to router.push","data":{"sessionId":32},"timestamp":1771490338418,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"ExamInterface.tsx:before router.push","message":"doSubmit about to router.push","data":{"sessionId":32},"timestamp":1771490338611,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"ExamInterface.tsx:doSubmit","message":"doSubmit entered","data":{"hasSessionId":true},"timestamp":1771490789832,"hypothesisId":"H1"}
+{"sessionId":"d99caf","location":"ExamInterface.tsx:before router.push","message":"doSubmit about to router.push","data":{"sessionId":33},"timestamp":1771490790047,"hypothesisId":"H1"}

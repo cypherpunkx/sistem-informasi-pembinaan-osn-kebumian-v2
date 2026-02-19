@@ -1,9 +1,17 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Clock, ChevronLeft, ChevronRight, CheckCircle, AlertTriangle } from "lucide-react";
+import { useState, useEffect, useCallback, useRef } from "react";
+import {
+    Clock,
+    ChevronLeft,
+    ChevronRight,
+    CheckCircle,
+    Flag,
+    AlertTriangle,
+} from "lucide-react";
 import { useRouter } from "next/navigation";
 import { startExamSession, getExamSession, submitExamAnswer, finishExam } from "@/app/actions/exams";
+import { setActiveExamCookie, clearActiveExamCookie } from "@/app/actions/exam-cookie";
 
 interface ExamInterfaceProps {
     examId: number;
@@ -29,67 +37,110 @@ export default function ExamInterface({ examId }: ExamInterfaceProps) {
     const [questions, setQuestions] = useState<Question[]>([]);
     const [sessionId, setSessionId] = useState<number | null>(null);
 
-    // UI State
     const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
-    const [answers, setAnswers] = useState<Record<number, string>>({}); // questionId -> answer string
+    const [answers, setAnswers] = useState<Record<number, string>>({});
+    const [markedForReview, setMarkedForReview] = useState<Set<number>>(new Set());
     const [timeLeft, setTimeLeft] = useState(0);
     const [isSubmitting, setIsSubmitting] = useState(false);
+    const [lastSavedAt, setLastSavedAt] = useState<Date | null>(null);
+    const [showReviewModal, setShowReviewModal] = useState(false);
+    const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
+    const [isLeaveSubmitting, setIsLeaveSubmitting] = useState(false);
+    const timeExpiredSubmittedRef = useRef(false);
 
-    // Initial Load
     useEffect(() => {
         const initExam = async () => {
             try {
-                console.log("=== Starting Exam ===");
-                console.log("Exam ID:", examId);
-
-                // 1. Start or Resume Session
                 const sessionRes = await startExamSession(examId);
-                console.log("Session Response:", sessionRes);
-
                 if (!sessionRes.sessionId) {
-                    console.error("Failed to start session:", sessionRes.message);
-                    alert(sessionRes.message || "Failed to start exam");
+                    alert(sessionRes.message || "Gagal memulai ujian");
                     router.push("/dashboard/latihan-ujian");
                     return;
                 }
                 setSessionId(sessionRes.sessionId);
+                await setActiveExamCookie(examId);
 
-                // 2. Fetch Questions & Exam Info
-                console.log("Fetching exam session data...");
                 const data = await getExamSession(sessionRes.sessionId);
-                console.log("Exam Session Data:", data);
-
                 if (!data) {
-                    console.error("getExamSession returned null");
-                    alert("Failed to load exam data. Please check the console for details.");
+                    alert("Gagal memuat data ujian.");
                     router.push("/dashboard/latihan-ujian");
                     return;
                 }
 
                 setExam(data.exam);
-                setQuestions(data.questions as Question[]); // Cast to updated interface
+                setQuestions((data.questions || []) as Question[]);
 
-                // Initialize answers from session if any (e.g. resuming)
-                // Note: getExamSession logic might need update to return existing answers if we want to support resume
-                // For now, assume fresh start or rely on session state if provided
-
-                // Use server-calculated time remaining
-                console.log("Exam Duration (minutes):", data.exam.duration);
-                console.log("Time Remaining (seconds):", data.timeRemaining);
-
-                setTimeLeft(data.timeRemaining || 0);
+                const remaining = data.timeRemaining ?? 0;
+                setTimeLeft(remaining);
+                if (remaining <= 0) {
+                    await finishExam(sessionRes.sessionId);
+                    await clearActiveExamCookie();
+                    router.push(`/dashboard/latihan-ujian/result/${sessionRes.sessionId}`);
+                    return;
+                }
                 setLoading(false);
             } catch (error) {
                 console.error("Error initializing exam:", error);
-                alert("An error occurred while loading the exam. Please try again.");
+                alert("Terjadi kesalahan. Silakan coba lagi.");
                 router.push("/dashboard/latihan-ujian");
             }
         };
 
-        if (examId) initExam();
+        if (examId && examId > 0) initExam();
+        else if (!examId || examId <= 0) router.push("/dashboard/latihan-ujian");
     }, [examId, router]);
 
-    // Timer
+    useEffect(() => {
+        if (loading || !sessionId || isSubmitting) return;
+
+        const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+            e.preventDefault();
+        };
+
+        const handlePopState = (e: PopStateEvent) => {
+            if (e.state?.exam === true) return;
+            window.history.forward();
+            setShowLeaveConfirm(true);
+        };
+
+        window.history.pushState({ exam: true }, "", window.location.href);
+        window.addEventListener("beforeunload", handleBeforeUnload);
+        window.addEventListener("popstate", handlePopState);
+
+        return () => {
+            window.removeEventListener("beforeunload", handleBeforeUnload);
+            window.removeEventListener("popstate", handlePopState);
+        };
+    }, [loading, sessionId, isSubmitting, router]);
+
+    const handleLeaveConfirm = useCallback(async () => {
+        if (!sessionId) return;
+        setIsLeaveSubmitting(true);
+        const res = await finishExam(sessionId);
+        if (res.success) {
+            await clearActiveExamCookie();
+            setShowLeaveConfirm(false);
+            router.push(`/dashboard/latihan-ujian/result/${sessionId}`);
+        } else {
+            setIsLeaveSubmitting(false);
+            alert(res.message || "Gagal mengirim ujian. Silakan coba lagi.");
+        }
+    }, [sessionId, router]);
+
+    const doSubmit = useCallback(async () => {
+        if (!sessionId) return;
+        setIsSubmitting(true);
+        const res = await finishExam(sessionId);
+
+        if (res.success) {
+            await clearActiveExamCookie();
+            router.push(`/dashboard/latihan-ujian/result/${sessionId}`);
+        } else {
+            alert("Gagal mengirim ujian. Silakan coba lagi.");
+            setIsSubmitting(false);
+        }
+    }, [sessionId, router]);
+
     useEffect(() => {
         if (loading || timeLeft <= 0) return;
 
@@ -97,200 +148,442 @@ export default function ExamInterface({ examId }: ExamInterfaceProps) {
             setTimeLeft((prev) => {
                 if (prev <= 1) {
                     clearInterval(timer);
-                    handleSubmit(true); // Auto-submit
                     return 0;
                 }
                 return prev - 1;
             });
         }, 1000);
         return () => clearInterval(timer);
-    }, [loading]);
+    }, [loading, doSubmit]);
+
+    useEffect(() => {
+        if (loading || timeLeft !== 0 || !sessionId || timeExpiredSubmittedRef.current) return;
+        timeExpiredSubmittedRef.current = true;
+        void doSubmit();
+    }, [loading, timeLeft, sessionId, doSubmit]);
 
     const formatTime = (seconds: number) => {
-        const totalMinutes = Math.floor(seconds / 60);
+        const m = Math.floor(seconds / 60);
         const s = seconds % 60;
-        return `${totalMinutes < 10 ? '0' : ''}${totalMinutes}:${s < 10 ? '0' : ''}${s}`;
+        return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
     };
 
-    const handleAnswerChange = async (questionId: number, value: string) => {
-        setAnswers(prev => ({ ...prev, [questionId]: value }));
+    const handleAnswerChange = (questionId: number, value: string) => {
+        setAnswers((prev) => ({ ...prev, [questionId]: value }));
     };
 
-    const saveAnswer = async (questionId: number, value: string) => {
-        if (sessionId) {
+    const saveAnswer = useCallback(
+        async (questionId: number, value: string) => {
+            if (!sessionId) return;
             await submitExamAnswer(sessionId, questionId, value);
-        }
-    };
+            setLastSavedAt(new Date());
+        },
+        [sessionId]
+    );
 
-    const handleSubmit = async (auto = false) => {
-        if (!sessionId) return;
+    const handleSubmit = useCallback(
+        (auto = false) => {
+            if (!sessionId) return;
 
-        if (!auto && !confirm("Are you sure you want to finish the exam?")) return;
+            if (!auto) {
+                setShowReviewModal(true);
+                return;
+            }
+            void doSubmit();
+        },
+        [sessionId, doSubmit]
+    );
 
-        setIsSubmitting(true);
-        const res = await finishExam(sessionId);
+    const handleConfirmSubmit = useCallback(() => {
+        setShowReviewModal(false);
+        doSubmit();
+    }, [doSubmit]);
 
-        if (res.success) {
-            router.push(`/dashboard/latihan-ujian/result/${sessionId}`);
-        } else {
-            alert("Failed to submit exam. Please try again.");
-            setIsSubmitting(false);
-        }
+    const toggleMarkForReview = (questionId: number) => {
+        setMarkedForReview((prev) => {
+            const next = new Set(prev);
+            if (next.has(questionId)) next.delete(questionId);
+            else next.add(questionId);
+            return next;
+        });
     };
 
     if (loading) {
         return (
             <div className="flex h-96 items-center justify-center">
-                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-earthy"></div>
+                <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-accent-earthy" />
             </div>
         );
     }
 
-    if (!exam || questions.length === 0) return <div>No exam data found.</div>;
+    if (!exam || questions.length === 0) {
+        return (
+            <div className="flex h-96 items-center justify-center text-text-dark/60">
+                Tidak ada data ujian.
+            </div>
+        );
+    }
 
     const currentQuestion = questions[currentQuestionIndex];
+    const answeredCount = questions.filter((q) => answers[q.id]?.trim()).length;
+    const unansweredCount = questions.length - answeredCount;
+
+    const timerMinutes = Math.floor(timeLeft / 60);
+    const timerColor =
+        timeLeft < 60
+            ? "text-red-600"
+            : timerMinutes < 5
+              ? "text-amber-600"
+              : "text-accent-earthy";
+    const timerPulse = timeLeft < 60 ? "animate-pulse" : "";
 
     return (
-        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-8rem)]">
+        <div className="flex flex-col lg:flex-row gap-6 h-[calc(100vh-5rem)] min-h-[500px]">
             {/* Main Question Area */}
             <div className="flex-1 flex flex-col bg-white rounded-xl shadow-sm border border-neutral-warm/20 overflow-hidden">
-                {/* Mobile Header */}
-                <div className="lg:hidden p-4 border-b border-neutral-warm/20 flex justify-between items-center bg-neutral-light">
-                    <span className="font-bold text-text-dark">Q {currentQuestionIndex + 1}/{questions.length}</span>
-                    <div className={`flex items-center gap-2 font-mono font-bold ${timeLeft < 60 ? "text-red-600" : "text-accent-earthy"}`}>
-                        <Clock className="w-4 h-4" />
-                        {formatTime(timeLeft)}
+                {/* Sticky Timer Bar */}
+                <div
+                    className={`flex items-center justify-between px-4 lg:px-6 py-4 bg-white border-b border-neutral-warm/20 ${timerPulse}`}
+                >
+                    <div className="flex items-center gap-4">
+                        <span className="text-base font-medium text-text-dark">
+                            Soal {currentQuestionIndex + 1} / {questions.length}
+                        </span>
+                        <div className={`flex items-center gap-2 font-mono text-xl lg:text-2xl font-bold ${timerColor}`}>
+                            <Clock className="w-5 h-5" aria-hidden />
+                            {formatTime(timeLeft)}
+                        </div>
+                    </div>
+                    <div className="flex items-center gap-4">
+                        {lastSavedAt && (
+                            <span className="text-sm text-green-600 flex items-center gap-1" role="status">
+                                <CheckCircle className="w-4 h-4" />
+                                Tersimpan
+                            </span>
+                        )}
                     </div>
                 </div>
 
-                {/* Question Content */}
-                <div className="flex-1 p-6 overflow-y-auto">
-                    <h2 className="text-xl font-bold text-text-dark mb-6">
+                <div className="flex-1 p-6 lg:p-8 overflow-y-auto">
+                    <h2
+                        className="text-lg lg:text-xl font-bold text-text-dark mb-8 leading-relaxed"
+                        style={{ fontSize: "clamp(1rem, 2vw, 1.25rem)" }}
+                    >
                         {currentQuestionIndex + 1}. {currentQuestion.content}
                     </h2>
 
-                    <div className="space-y-3">
-                        {currentQuestion.type === "MULTIPLE_CHOICE" && currentQuestion.options.map((option, idx) => {
-                            const isSelected = answers[currentQuestion.id] === option.id.toString();
-                            return (
-                                <button
-                                    key={option.id}
-                                    onClick={() => {
-                                        handleAnswerChange(currentQuestion.id, option.id.toString());
-                                        saveAnswer(currentQuestion.id, option.id.toString());
-                                    }}
-                                    className={`w-full text-left p-4 rounded-lg border-2 transition-all flex items-center gap-3 group
-                                    ${isSelected
-                                            ? "border-accent-earthy bg-accent-earthy/5"
-                                            : "border-neutral-warm/30 hover:border-accent-earthy/50"
-                                        }`}
-                                >
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center font-bold text-sm transition-colors
-                                     ${isSelected
-                                            ? "bg-accent-earthy text-white"
-                                            : "bg-neutral-light text-text-dark group-hover:bg-neutral-warm/20"
-                                        }`}>
-                                        {String.fromCharCode(65 + idx)}
-                                    </div>
-                                    <span className="text-text-dark group-hover:text-black">{option.content}</span>
-                                </button>
-                            );
-                        })}
+                    <div className="space-y-4">
+                        {currentQuestion.type === "MULTIPLE_CHOICE" &&
+                            currentQuestion.options.map((option, idx) => {
+                                const isSelected =
+                                    answers[currentQuestion.id] === option.id.toString();
+                                return (
+                                    <button
+                                        key={option.id}
+                                        type="button"
+                                        onClick={() => {
+                                            handleAnswerChange(currentQuestion.id, option.id.toString());
+                                            saveAnswer(currentQuestion.id, option.id.toString());
+                                        }}
+                                        className={`w-full text-left p-5 rounded-xl border-2 flex items-center gap-4 transition-all duration-200 hover:border-accent-earthy/50
+                                            ${isSelected
+                                                ? "border-accent-earthy bg-accent-earthy/5 ring-1 ring-accent-earthy/20"
+                                                : "border-neutral-warm/30 bg-white"
+                                            }`}
+                                        aria-pressed={isSelected}
+                                        aria-label={`Opsi ${String.fromCharCode(65 + idx)}: ${option.content.slice(0, 50)}`}
+                                    >
+                                        <div
+                                            className={`shrink-0 w-10 h-10 rounded-full flex items-center justify-center font-bold text-base transition-colors duration-200
+                                                ${isSelected
+                                                    ? "bg-accent-earthy text-white"
+                                                    : "bg-neutral-light text-text-dark"
+                                                }`}
+                                        >
+                                            {String.fromCharCode(65 + idx)}
+                                        </div>
+                                        <span className="text-base text-text-dark flex-1">
+                                            {option.content}
+                                        </span>
+                                    </button>
+                                );
+                            })}
 
-                        {(currentQuestion.type === "ESSAY" || currentQuestion.type === "SHORT_ANSWER") && (
-                            <div className="space-y-2">
-                                <label className="block text-sm font-medium text-text-dark/60">Your Answer:</label>
+                        {(currentQuestion.type === "ESSAY" ||
+                            currentQuestion.type === "SHORT_ANSWER") && (
+                            <div className="space-y-3">
+                                <label
+                                    htmlFor={`answer-${currentQuestion.id}`}
+                                    className="block text-sm font-medium text-text-dark/70"
+                                >
+                                    Jawaban Anda:
+                                </label>
                                 <textarea
-                                    className="w-full p-4 rounded-lg border border-neutral-warm/30 focus:border-accent-earthy focus:ring-1 focus:ring-accent-earthy min-h-[150px]"
-                                    placeholder="Type your answer here..."
+                                    id={`answer-${currentQuestion.id}`}
+                                    className="w-full p-4 rounded-xl border-2 border-neutral-warm/30 focus:border-accent-earthy focus:ring-2 focus:ring-accent-earthy/20 min-h-[180px] text-base leading-relaxed transition-all duration-200"
+                                    placeholder="Ketik jawaban Anda di sini..."
                                     value={answers[currentQuestion.id] || ""}
-                                    onChange={(e) => handleAnswerChange(currentQuestion.id, e.target.value)}
+                                    onChange={(e) =>
+                                        handleAnswerChange(currentQuestion.id, e.target.value)
+                                    }
                                     onBlur={(e) => saveAnswer(currentQuestion.id, e.target.value)}
+                                    aria-describedby={`hint-${currentQuestion.id}`}
                                 />
-                                <p className="text-xs text-text-dark/40">Answer will be saved automatically when you click outside the box.</p>
+                                <p
+                                    id={`hint-${currentQuestion.id}`}
+                                    className="text-sm text-text-dark/50"
+                                >
+                                    Tersimpan otomatis saat Anda mengklik di luar kotak.
+                                </p>
                             </div>
                         )}
                     </div>
                 </div>
 
                 {/* Navigation Footer */}
-                <div className="p-4 border-t border-neutral-warm/20 flex justify-between items-center bg-neutral-light/30">
+                <div className="p-4 lg:p-6 border-t border-neutral-warm/20 flex flex-wrap justify-between items-center gap-4 bg-neutral-light/30">
                     <button
-                        onClick={() => setCurrentQuestionIndex(prev => Math.max(0, prev - 1))}
+                        type="button"
+                        onClick={() => setCurrentQuestionIndex((p) => Math.max(0, p - 1))}
                         disabled={currentQuestionIndex === 0}
-                        className="flex items-center gap-2 px-4 py-2 rounded-lg text-text-dark hover:bg-neutral-warm/10 disabled:opacity-50 disabled:cursor-not-allowed"
+                        className="flex items-center gap-2 px-5 py-2.5 rounded-lg text-text-dark hover:bg-neutral-warm/10 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
+                        aria-label="Soal sebelumnya"
                     >
-                        <ChevronLeft className="w-4 h-4" /> Previous
+                        <ChevronLeft className="w-5 h-5" /> Sebelumnya
+                    </button>
+
+                    <button
+                        type="button"
+                        onClick={() => toggleMarkForReview(currentQuestion.id)}
+                        className={`flex items-center gap-2 px-4 py-2 rounded-lg transition-all duration-200
+                            ${markedForReview.has(currentQuestion.id)
+                                ? "bg-amber-100 text-amber-800 border-2 border-amber-400"
+                                : "text-text-dark/70 hover:bg-neutral-warm/10 border-2 border-transparent"
+                            }`}
+                        aria-pressed={markedForReview.has(currentQuestion.id)}
+                        aria-label={
+                            markedForReview.has(currentQuestion.id)
+                                ? "Hapus tandai untuk review"
+                                : "Tandai untuk review"
+                        }
+                    >
+                        <Flag className="w-4 h-4" />
+                        {markedForReview.has(currentQuestion.id) ? "Batalkan Tandai" : "Tandai untuk Review"}
                     </button>
 
                     {currentQuestionIndex === questions.length - 1 ? (
                         <button
+                            type="button"
                             onClick={() => handleSubmit(false)}
                             disabled={isSubmitting}
-                            className="flex items-center gap-2 px-6 py-2 rounded-lg bg-green-600 text-white hover:bg-green-700 font-bold shadow-sm"
+                            className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-green-600 text-white hover:bg-green-700 font-bold shadow-sm disabled:opacity-70 transition-all duration-200"
                         >
-                            {isSubmitting ? "Submitting..." : "Finish Exam"} <CheckCircle className="w-4 h-4" />
+                            {isSubmitting ? "Mengirim..." : "Kumpulkan Ujian"}
+                            <CheckCircle className="w-5 h-5" />
                         </button>
                     ) : (
                         <button
-                            onClick={() => setCurrentQuestionIndex(prev => Math.min(questions.length - 1, prev + 1))}
-                            className="flex items-center gap-2 px-6 py-2 rounded-lg bg-accent-earthy text-white hover:bg-text-dark font-bold shadow-sm"
+                            type="button"
+                            onClick={() =>
+                                setCurrentQuestionIndex((p) =>
+                                    Math.min(questions.length - 1, p + 1)
+                                )
+                            }
+                            className="flex items-center gap-2 px-6 py-2.5 rounded-lg bg-accent-earthy text-white hover:bg-text-dark font-bold shadow-sm transition-all duration-200"
+                            aria-label="Soal berikutnya"
                         >
-                            Next <ChevronRight className="w-4 h-4" />
+                            Selanjutnya <ChevronRight className="w-5 h-5" />
                         </button>
                     )}
                 </div>
             </div>
 
-            {/* Sidebar / Navigator */}
-            <div className="w-full lg:w-80 flex flex-col gap-6">
-                {/* Timer Card (Desktop) */}
-                <div className="hidden lg:block bg-white p-6 rounded-xl shadow-sm border border-neutral-warm/20 text-center">
-                    <p className="text-text-dark/60 text-sm mb-1">Time Remaining</p>
-                    <div className={`text-4xl font-mono font-bold flex items-center justify-center gap-3 ${timeLeft < 60 ? "text-red-600 animate-pulse" : "text-accent-earthy"}`}>
-                        <Clock className="w-8 h-8" />
-                        {formatTime(timeLeft)}
+            {/* Question Navigator Panel */}
+            <div className="w-full lg:w-80 flex flex-col gap-6 shrink-0">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-warm/20">
+                    <h3 className="font-bold text-text-dark mb-4 text-base">Navigator Soal</h3>
+                    <div className="grid grid-cols-5 gap-2">
+                        {questions.map((q, idx) => {
+                            const isAnswered = !!answers[q.id]?.trim();
+                            const isMarked = markedForReview.has(q.id);
+                            const isCurrent = currentQuestionIndex === idx;
+
+                            let bg = "bg-neutral-100 text-text-dark border border-neutral-warm/20";
+                            if (isCurrent) bg = "ring-2 ring-accent-earthy ring-offset-2 bg-white";
+                            if (isAnswered && !isMarked) bg = "bg-accent-earthy text-white border-transparent";
+                            if (isMarked && isAnswered) bg = "bg-amber-500 text-white border-transparent";
+                            if (isMarked && !isAnswered) bg = "bg-amber-400 text-white border-transparent";
+
+                            return (
+                                <button
+                                    key={q.id}
+                                    type="button"
+                                    onClick={() => setCurrentQuestionIndex(idx)}
+                                    className={`aspect-square rounded-lg flex items-center justify-center font-bold text-sm transition-all duration-200 hover:scale-105 ${bg}`}
+                                    aria-current={isCurrent ? "step" : undefined}
+                                    aria-label={`Soal ${idx + 1}${isAnswered ? ", sudah dijawab" : ""}${isMarked ? ", ditandai" : ""}`}
+                                >
+                                    {idx + 1}
+                                </button>
+                            );
+                        })}
+                    </div>
+
+                    <div className="mt-6 pt-4 border-t border-neutral-warm/20 space-y-2 text-sm text-text-dark/70">
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded bg-accent-earthy" />
+                            <span>Dijawab</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded bg-amber-400" />
+                            <span>Ditandai</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                            <div className="w-4 h-4 rounded border-2 border-neutral-warm/40 bg-white" />
+                            <span>Belum dijawab</span>
+                        </div>
                     </div>
                 </div>
 
-                {/* Question Grid */}
-                <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-warm/20 flex-1 flex flex-col">
-                    <h3 className="font-bold text-text-dark mb-4">Question Navigator</h3>
-                    <div className="grid grid-cols-5 gap-2 content-start">
-                        {questions.map((q, idx) => (
-                            <button
-                                key={q.id}
-                                onClick={() => setCurrentQuestionIndex(idx)}
-                                className={`aspect-square rounded-lg flex items-center justify-center font-bold text-sm transition-all
-                            ${currentQuestionIndex === idx
-                                        ? "ring-2 ring-accent-earthy ring-offset-2"
-                                        : ""}
-                            ${answers[q.id]
-                                        ? "bg-accent-earthy text-white"
-                                        : "bg-neutral-light text-text-dark hover:bg-neutral-warm/30"}
-                        `}
-                            >
-                                {idx + 1}
-                            </button>
-                        ))}
-                    </div>
-
-                    <div className="mt-auto pt-6 text-xs text-text-dark/60 space-y-2">
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-accent-earthy"></div>
-                            <span>Answered</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-full bg-neutral-light border border-neutral-warm/20"></div>
-                            <span>Not Answered</span>
-                        </div>
-                        <div className="flex items-center gap-2">
-                            <div className="w-3 h-3 rounded-md ring-2 ring-accent-earthy"></div>
-                            <span>Current</span>
-                        </div>
-                    </div>
+                {/* Review Summary - shown when modal would appear */}
+                <div className="bg-white p-4 rounded-xl border border-neutral-warm/20 text-sm">
+                    <p className="font-medium text-text-dark mb-2">Ringkasan</p>
+                    <p>
+                        Dijawab: <span className="font-bold text-green-600">{answeredCount}</span>
+                    </p>
+                    <p>
+                        Belum: <span className="font-bold text-amber-600">{unansweredCount}</span>
+                    </p>
+                    <p>
+                        Ditandai:{" "}
+                        <span className="font-bold text-amber-700">{markedForReview.size}</span>
+                    </p>
                 </div>
             </div>
+
+            {/* Review Modal */}
+            {showReviewModal && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                    role="dialog"
+                    aria-labelledby="review-title"
+                    aria-modal="true"
+                >
+                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-5">
+                        <h2 id="review-title" className="text-lg font-bold text-text-dark flex items-center gap-2">
+                            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" aria-hidden />
+                            Review Sebelum Kumpul
+                        </h2>
+                        <p className="text-text-dark/80 text-sm">Anda akan mengumpulkan ujian.</p>
+
+                        <div className="border-t border-b border-neutral-warm/30 py-4 space-y-4">
+                            <p className="text-sm text-text-dark/70">Total Soal: {questions.length}</p>
+                            <div className="grid grid-cols-1 gap-3">
+                                <div className="flex items-baseline justify-between gap-2">
+                                    <span className="text-xs text-text-dark/70">Sudah dijawab</span>
+                                    <span className="text-[20px] font-bold text-green-600 tabular-nums">{answeredCount}</span>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                    <span className="text-xs text-text-dark/70">Belum dijawab</span>
+                                    <span className="text-[20px] font-bold text-text-dark tabular-nums">{unansweredCount}</span>
+                                </div>
+                                <div className="flex items-baseline justify-between gap-2">
+                                    <span className="text-xs text-text-dark/70">Ditandai untuk review</span>
+                                    <span className="text-[20px] font-bold text-text-dark tabular-nums">{markedForReview.size}</span>
+                                </div>
+                            </div>
+                            <div className="space-y-1">
+                                <span className="text-xs text-text-dark/70">Progress</span>
+                                <div className="h-2 rounded-full bg-neutral-warm/30 overflow-hidden">
+                                    <div
+                                        className="h-full rounded-full bg-green-600 transition-all"
+                                        style={{ width: `${questions.length ? (answeredCount / questions.length) * 100 : 0}%` }}
+                                        role="progressbar"
+                                        aria-valuenow={answeredCount}
+                                        aria-valuemin={0}
+                                        aria-valuemax={questions.length}
+                                    />
+                                </div>
+                                <p className="text-xs text-text-dark/60 tabular-nums">{answeredCount} / {questions.length}</p>
+                            </div>
+                        </div>
+
+                        {unansweredCount > 0 ? (
+                            <p className="text-sm text-red-600 font-medium flex items-center gap-2" role="alert">
+                                <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden />
+                                {unansweredCount} soal belum dijawab akan dianggap kosong.
+                            </p>
+                        ) : (
+                            <p className="text-sm text-green-600 font-medium flex items-center gap-2">
+                                <CheckCircle className="w-4 h-4 shrink-0" aria-hidden />
+                                Semua soal telah dijawab.
+                            </p>
+                        )}
+
+                        <div className="flex gap-3 pt-1">
+                            <button
+                                type="button"
+                                onClick={() => setShowReviewModal(false)}
+                                className="flex-1 py-2.5 rounded-lg border border-neutral-warm/40 bg-white text-text-dark font-medium hover:bg-neutral-light transition-colors"
+                            >
+                                Kembali
+                            </button>
+                            <button
+                                type="button"
+                                onClick={handleConfirmSubmit}
+                                className="flex-1 py-2.5 rounded-lg bg-green-600 text-white font-semibold hover:bg-green-700 transition-colors"
+                            >
+                                Kumpulkan Ujian
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
+
+            {/* Konfirmasi keluar = submit + redirect ke result */}
+            {showLeaveConfirm && (
+                <div
+                    className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+                    role="dialog"
+                    aria-labelledby="leave-exam-title"
+                    aria-modal="true"
+                >
+                    <div className="bg-white rounded-2xl shadow-xl max-w-md w-full p-6 space-y-4">
+                        <h2 id="leave-exam-title" className="text-lg font-bold text-text-dark flex items-center gap-2">
+                            <AlertTriangle className="w-5 h-5 text-amber-500 shrink-0" />
+                            Keluar dan Kumpulkan Ujian?
+                        </h2>
+                        <p className="text-text-dark/80 text-sm">
+                            Jika Anda keluar sekarang, ujian akan langsung dikumpulkan dan tidak dapat dilanjutkan kembali.
+                        </p>
+                        <div className="flex gap-3 pt-2">
+                            <button
+                                type="button"
+                                disabled={isLeaveSubmitting}
+                                onClick={() => setShowLeaveConfirm(false)}
+                                className="flex-1 py-2.5 rounded-lg border border-neutral-warm/40 bg-white text-text-dark font-medium hover:bg-neutral-light transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+                            >
+                                Batal
+                            </button>
+                            <button
+                                type="button"
+                                disabled={isLeaveSubmitting}
+                                onClick={() => void handleLeaveConfirm()}
+                                className="flex-1 py-2.5 rounded-lg bg-red-600 text-white font-medium hover:bg-red-700 transition-colors disabled:opacity-70 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                            >
+                                {isLeaveSubmitting ? (
+                                    <>
+                                        <span className="inline-block w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                                        Mengumpulkan…
+                                    </>
+                                ) : (
+                                    "Keluar & Kumpulkan"
+                                )}
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

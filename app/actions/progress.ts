@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { userProgress, materials, examSessions, exams } from "@/lib/schema";
-import { eq, and, desc, sql, gte } from "drizzle-orm";
+import { eq, and, gte, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 
@@ -32,11 +32,16 @@ export async function getUserStats(userId?: string) {
             .where(and(eq(examSessions.userId, targetUserId), eq(examSessions.status, "COMPLETED")));
         const examsTaken = examsTakenQuery[0].count;
 
-        // Average Score
+        // Average Score & Best Score
         const avgScoreQuery = await db.select({ avg: sql<number>`avg(${examSessions.score})` })
             .from(examSessions)
             .where(and(eq(examSessions.userId, targetUserId), eq(examSessions.status, "COMPLETED")));
         const averageScore = Math.round(Number(avgScoreQuery[0].avg) || 0);
+
+        const bestScoreQuery = await db.select({ max: sql<number>`max(${examSessions.score})` })
+            .from(examSessions)
+            .where(and(eq(examSessions.userId, targetUserId), eq(examSessions.status, "COMPLETED")));
+        const bestScore = Number(bestScoreQuery[0].max) || 0;
 
         // 3. Category Performance (Requires joining with exams table)
         const categoryPerformance = await db.select({
@@ -48,11 +53,12 @@ export async function getUserStats(userId?: string) {
             .where(and(eq(examSessions.userId, targetUserId), eq(examSessions.status, "COMPLETED")))
             .groupBy(exams.category);
 
-        // 4. Weekly Activity (Last 7 days exams)
-        const onewWeekAgo = new Date();
-        onewWeekAgo.setDate(onewWeekAgo.getDate() - 7);
+        // 4. Weekly Activity: selalu 7 hari terakhir (hari tanpa aktivitas = 0), scalable
+        const oneWeekAgo = new Date();
+        oneWeekAgo.setDate(oneWeekAgo.getDate() - 6);
+        oneWeekAgo.setHours(0, 0, 0, 0);
 
-        const weeklyActivity = await db.select({
+        const rawWeekly = await db.select({
             date: sql<string>`DATE(${examSessions.endTime})`,
             count: sql<number>`count(*)`
         })
@@ -60,10 +66,22 @@ export async function getUserStats(userId?: string) {
             .where(and(
                 eq(examSessions.userId, targetUserId),
                 eq(examSessions.status, "COMPLETED"),
-                gte(examSessions.endTime, onewWeekAgo)
+                gte(examSessions.endTime, oneWeekAgo)
             ))
             .groupBy(sql`DATE(${examSessions.endTime})`)
             .orderBy(sql`DATE(${examSessions.endTime})`);
+
+        const countByDate = new Map(rawWeekly.map((r) => [r.date, Number(r.count)]));
+        const weeklyActivity: { date: string; count: number }[] = [];
+        for (let i = 0; i < 7; i++) {
+            const d = new Date(oneWeekAgo);
+            d.setDate(d.getDate() + i);
+            const y = d.getFullYear();
+            const m = String(d.getMonth() + 1).padStart(2, "0");
+            const day = String(d.getDate()).padStart(2, "0");
+            const dateStr = `${y}-${m}-${day}`;
+            weeklyActivity.push({ date: dateStr, count: countByDate.get(dateStr) ?? 0 });
+        }
 
         return {
             materials: {
@@ -73,7 +91,8 @@ export async function getUserStats(userId?: string) {
             },
             exams: {
                 totalTaken: examsTaken,
-                averageScore
+                averageScore,
+                bestScore
             },
             categoryPerformance,
             weeklyActivity
@@ -82,6 +101,20 @@ export async function getUserStats(userId?: string) {
     } catch (error) {
         console.error("Failed to fetch user stats:", error);
         return null;
+    }
+}
+
+export async function getCompletedMaterialIds(userId: string): Promise<number[]> {
+    if (!userId) return [];
+    try {
+        const rows = await db
+            .select({ materialId: userProgress.materialId })
+            .from(userProgress)
+            .where(and(eq(userProgress.userId, userId), eq(userProgress.isCompleted, true)));
+        return rows.map((r) => r.materialId);
+    } catch (error) {
+        console.error("Failed to fetch completed material IDs:", error);
+        return [];
     }
 }
 
@@ -110,7 +143,8 @@ export async function markMaterialComplete(materialId: number) {
         }
 
         revalidatePath("/dashboard/materi");
-        revalidatePath("/dashboard"); // Update Main Dashboard
+        revalidatePath("/dashboard/progres");
+        revalidatePath("/dashboard");
 
         return { success: true };
     } catch (error) {

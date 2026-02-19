@@ -60,19 +60,6 @@ export default function RegisterPage() {
                             />
                         </div>
                         <div className="mb-4">
-                            <label htmlFor="role" className="sr-only">Role</label>
-                            <select
-                                id="role"
-                                name="role"
-                                className="appearance-none rounded-md relative block w-full px-3 py-2 border border-neutral-warm/30 text-text-dark focus:outline-none focus:ring-accent-earthy focus:border-accent-earthy focus:z-10 sm:text-sm bg-white"
-                                defaultValue="peserta"
-                            >
-                                <option value="peserta">Peserta</option>
-                                <option value="pembina">Pembina</option>
-                                <option value="admin">Admin</option>
-                            </select>
-                        </div>
-                        <div className="mb-4">
                             <label htmlFor="school" className="sr-only">School (Peserta/Pembina)</label>
                             <input
                                 id="school"

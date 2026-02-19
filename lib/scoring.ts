@@ -1,14 +1,37 @@
-
 export interface ScoringResult {
     earned: number;
     isCorrect: boolean;
     feedback: string;
 }
 
+export interface ScoringAnswerKey {
+    key: string;
+    type: "TEXT" | "NUMERIC";
+    tolerance?: number;
+}
+
+export interface ScoringRubricItem {
+    component: string;
+    keywords: string | string[];
+    points: number;
+}
+
+export interface ScoringQuestion {
+    type: string;
+    weight?: number | null;
+    answerKeys?: ScoringAnswerKey[];
+    rubric?: ScoringRubricItem[];
+}
+
+export interface ScoringOption {
+    id: number;
+    isCorrect?: boolean;
+}
+
 export function calculateQuestionScore(
-    question: any,
+    question: ScoringQuestion,
     answer: string,
-    options: any[] = []
+    options: ScoringOption[] = []
 ): ScoringResult {
     const weight = question.weight || 1;
     let earned = 0;
@@ -35,7 +58,7 @@ export function calculateQuestionScore(
     // -- SHORT ANSWER --
     else if (question.type === "SHORT_ANSWER") {
         const userVal = answer.trim();
-        const keys = question.answerKeys as { key: string; type: "TEXT" | "NUMERIC"; tolerance?: number }[] || [];
+        const keys = question.answerKeys ?? [];
 
         let matchFound = false;
 
@@ -69,7 +92,7 @@ export function calculateQuestionScore(
     // -- ESSAY --
     else if (question.type === "ESSAY") {
         const userText = answer.toLowerCase();
-        const rubrics = question.rubric as { component: string; keywords: string | string[]; points: number }[] || [];
+        const rubrics = question.rubric ?? [];
 
         let earnedRubricPoints = 0;
         let totalRubricPoints = 0;

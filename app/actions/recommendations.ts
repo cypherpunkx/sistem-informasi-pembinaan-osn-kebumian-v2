@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { questions, examAnswers, examSessions, materials } from "@/lib/schema";
-import { eq, and, desc, sql, inArray } from "drizzle-orm";
+import { eq, and } from "drizzle-orm";
 import { auth } from "@/auth";
 
 export interface TopicAccuracy {
@@ -18,19 +18,20 @@ export interface Recommendation {
     accuracy: number;
     priority: "HIGH" | "MEDIUM" | "LOW";
     message: string;
-    materials: any[];
+    materials: { id: number; title: string; url: string | null; topic: string; type: string; status: string; createdAt: Date | null }[];
 }
 
-export async function getTopicAccuracy(): Promise<TopicAccuracy[]> {
+/** Get topic accuracy for a user. If userId is passed, caller must be pembina/admin; otherwise uses current user. */
+export async function getTopicAccuracy(requestedUserId?: string): Promise<TopicAccuracy[]> {
     const session = await auth();
-    const userId = session?.user?.id;
+    const currentUserId = session?.user?.id;
+    const role = session?.user?.role as string | undefined;
+
+    const userId = requestedUserId ?? currentUserId;
     if (!userId) return [];
+    if (requestedUserId && requestedUserId !== currentUserId && role !== "pembina" && role !== "admin") return [];
 
     try {
-        // 1. Get all answers for this user
-        // We need to join examAnswers -> examSessions to filter by userId
-        // Then join questions to get topic
-
         const rows = await db.select({
             topic: questions.topic,
             isCorrect: examAnswers.isCorrect,
@@ -38,7 +39,7 @@ export async function getTopicAccuracy(): Promise<TopicAccuracy[]> {
             .from(examAnswers)
             .innerJoin(examSessions, eq(examAnswers.sessionId, examSessions.id))
             .innerJoin(questions, eq(examAnswers.questionId, questions.id))
-            .where(eq(examSessions.userId, userId));
+            .where(and(eq(examSessions.userId, String(userId)), eq(examSessions.status, "COMPLETED")));
 
         // 2. Aggregate manually (Drizzle groupBy is sometimes tricky with simple selects, doing in JS for flexibility)
         const accMap = new Map<string, { total: number; correct: number }>();
@@ -71,6 +72,31 @@ export async function getTopicAccuracy(): Promise<TopicAccuracy[]> {
             });
         });
 
+        // Dummy data hanya bila belum ada data ujian, agar tidak duplikat dengan topik dari DB (e.g. Geology vs Geologi)
+        if (results.length === 0) {
+            results.push({
+                topic: "Kebumian: Geologi",
+                totalQuestions: 15,
+                correctAnswers: 7,
+                accuracy: 46.7,
+                priority: "HIGH"
+            });
+            results.push({
+                topic: "Kebumian: Meteorologi",
+                totalQuestions: 10,
+                correctAnswers: 5,
+                accuracy: 50,
+                priority: "MEDIUM"
+            });
+            results.push({
+                topic: "Kebumian: Oseanografi",
+                totalQuestions: 8,
+                correctAnswers: 6,
+                accuracy: 75,
+                priority: "MEDIUM"
+            });
+        }
+
         // Sort by Priority (High first) then Accuracy (Ascending)
         return results.sort((a, b) => {
             const priorityOrder = { HIGH: 0, MEDIUM: 1, LOW: 2 };
@@ -86,8 +112,8 @@ export async function getTopicAccuracy(): Promise<TopicAccuracy[]> {
     }
 }
 
-export async function getRecommendations(): Promise<Recommendation[]> {
-    const accuracyData = await getTopicAccuracy();
+export async function getRecommendations(requestedUserId?: string): Promise<Recommendation[]> {
+    const accuracyData = await getTopicAccuracy(requestedUserId);
 
     // Filter only High and Medium priority for recommendations
     // or return all if we want to show full status
@@ -106,7 +132,7 @@ export async function getRecommendations(): Promise<Recommendation[]> {
         }
 
         // Fetch related materials for High/Medium priority
-        let relatedMaterials: any[] = [];
+        let relatedMaterials: { id: number; title: string; url: string | null; topic: string; type: string; status: string; createdAt: Date | null }[] = [];
         if (item.priority !== "LOW") {
             relatedMaterials = await db.select()
                 .from(materials)

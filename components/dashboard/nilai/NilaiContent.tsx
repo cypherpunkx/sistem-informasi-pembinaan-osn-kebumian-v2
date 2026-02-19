@@ -99,6 +99,18 @@ export default function NilaiContent({ initialSessions, students, examsList }: N
         });
     };
 
+    const refetchSessions = () => {
+        startTransition(async () => {
+            const filters: Record<string, unknown> = { page: currentPage, limit: 20 };
+            if (selectedStudent) filters.studentId = parseInt(selectedStudent);
+            if (selectedExam) filters.examId = parseInt(selectedExam);
+            if (feedbackFilter === "with") filters.hasFeedback = true;
+            if (feedbackFilter === "without") filters.hasFeedback = false;
+            const result = await getStudentExamSessions(filters);
+            setSessions(result);
+        });
+    };
+
     // Client-side search filtering
     const filteredSessions = sessions.data.filter((session) => {
         if (!searchQuery) return true;
@@ -236,7 +248,11 @@ export default function NilaiContent({ initialSessions, students, examsList }: N
                     <tbody className="bg-white divide-y divide-neutral-warm/20">
                         {filteredSessions.length > 0 ? (
                             filteredSessions.map((session) => (
-                                <ExamSessionRow key={session.sessionId} session={session} />
+                                <ExamSessionRow
+                                    key={session.sessionId}
+                                    session={session}
+                                    onFeedbackSaved={refetchSessions}
+                                />
                             ))
                         ) : (
                             <tr>

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BookOpen, CheckCircle, AlertTriangle, ArrowRight } from "lucide-react";
+import { BookOpen, CheckCircle, Target } from "lucide-react";
 import { Recommendation } from "@/app/actions/recommendations";
 
 interface RecommendationDashboardProps {
@@ -22,7 +22,7 @@ export default function RecommendationDashboard({ recommendations }: Recommendat
     return (
         <div className="space-y-6">
             <h2 className="text-xl font-bold text-text-dark flex items-center gap-2">
-                <BookOpen className="w-5 h-5 text-accent-earthy" />
+                <Target className="w-5 h-5 text-accent-earthy" />
                 Rekomendasi Latihan Kamu
             </h2>
 
@@ -40,20 +40,24 @@ export default function RecommendationDashboard({ recommendations }: Recommendat
             )}
 
             {lowPriorityItems.length > 0 && (
-                <div className="mt-8">
-                    <h3 className="text-lg font-bold text-text-dark/80 mb-4">Topik Dikuasai</h3>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <details className="mt-6 group">
+                    <summary className="cursor-pointer text-sm font-medium text-text-dark/70 hover:text-text-dark list-none flex items-center gap-2">
+                        <span className="group-open:rotate-90 transition-transform">›</span>
+                        Topik Dikuasai ({lowPriorityItems.length})
+                    </summary>
+                    <div className="mt-3 flex flex-wrap gap-2">
                         {lowPriorityItems.map((item, idx) => (
-                            <div key={idx} className="p-4 bg-white rounded-lg border border-neutral-warm/20 flex justify-between items-center opacity-70 hover:opacity-100 transition-opacity">
-                                <div>
-                                    <h4 className="font-bold text-text-dark">{item.topic}</h4>
-                                    <p className="text-xs text-text-dark/60">Akurasi: {Math.round(item.accuracy)}%</p>
-                                </div>
-                                <CheckCircle className="w-5 h-5 text-green-500" />
+                            <div
+                                key={idx}
+                                className="inline-flex items-center gap-2 px-3 py-2 bg-white rounded-lg border border-neutral-warm/20 text-sm"
+                            >
+                                <CheckCircle className="w-4 h-4 text-green-500 shrink-0" />
+                                <span className="font-medium text-text-dark">{item.topic}</span>
+                                <span className="text-text-dark/60">{Math.round(item.accuracy)}%</span>
                             </div>
                         ))}
                     </div>
-                </div>
+                </details>
             )}
         </div>
     );
@@ -85,8 +89,8 @@ function RecommendationCard({ item }: { item: Recommendation }) {
 
             <div className="space-y-3 mt-auto">
                 <Link
-                    href={`/dashboard/latihan/prioritas/${encodeURIComponent(item.topic)}`}
-                    className={`block w-full text-center py-2 rounded-lg font-bold text-white transition-colors ${isHigh ? "bg-red-600 hover:bg-red-700" : "bg-yellow-600 hover:bg-yellow-700"}`}
+                    href={`/dashboard/latihan-ujian/topik/${encodeURIComponent(item.topic)}`}
+                    className={`block w-full text-center py-2.5 rounded-lg font-bold text-white transition-colors ${isHigh ? "bg-red-600 hover:bg-red-700" : "bg-yellow-600 hover:bg-yellow-700"}`}
                 >
                     Mulai Latihan {item.topic}
                 </Link>

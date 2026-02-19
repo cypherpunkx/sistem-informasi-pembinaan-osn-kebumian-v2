@@ -1,9 +1,9 @@
-@import "tailwindcss";
+@import 'tailwindcss';
 
 @theme {
-  --color-neutral-light: #E4E0E1;
-  --color-neutral-warm: #D6C0B3;
-  --color-accent-earthy: #AB886D;
+  --color-neutral-light: #e4e0e1;
+  --color-neutral-warm: #d6c0b3;
+  --color-accent-earthy: #ab886d;
   --color-text-dark: #493628;
 
   --font-sans: var(--font-geist-sans);
@@ -26,4 +26,22 @@ body {
   background: var(--background);
   color: var(--foreground);
   font-family: var(--font-sans), Arial, Helvetica, sans-serif;
+}
+
+@keyframes delete-modal-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes delete-modal-scale-in {
+  from { opacity: 0; transform: scale(0.96); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+.animate-delete-backdrop {
+  animation: delete-modal-fade-in 0.2s ease-out;
+}
+
+.animate-delete-modal {
+  animation: delete-modal-scale-in 0.15s ease-out;
 }

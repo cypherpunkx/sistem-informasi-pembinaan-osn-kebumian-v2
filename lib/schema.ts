@@ -1,4 +1,12 @@
-import { mysqlTable, serial, varchar, text, mysqlEnum, timestamp, int, json, boolean } from "drizzle-orm/mysql-core";
+import { mysqlTable, serial, varchar, text, mysqlEnum, timestamp, int, json, boolean, double } from "drizzle-orm/mysql-core";
+
+export const topics = mysqlTable("topics", {
+    id: serial("id").primaryKey(),
+    name: varchar("name", { length: 100 }).notNull().unique(),
+    sortOrder: int("sort_order").default(0),
+    createdAt: timestamp("created_at").defaultNow(),
+    updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
+});
 
 export const users = mysqlTable("users", {
     id: serial("id").primaryKey(),
@@ -45,7 +53,7 @@ export const materials = mysqlTable("materials", {
     title: varchar("title", { length: 255 }).notNull(),
     description: text("description"),
     type: mysqlEnum("type", ["PDF", "VIDEO", "SLIDE", "TEXT"]).notNull(),
-    url: varchar("url", { length: 500 }).notNull(), // External link for now
+    url: varchar("url", { length: 2000 }).notNull(),
     topic: varchar("topic", { length: 100 }).notNull(),
     tags: json("tags"), // Stored as array of strings
     status: mysqlEnum("status", ["DRAFT", "PENDING", "PUBLISHED", "ARCHIVED"]).default("DRAFT").notNull(),
@@ -63,8 +71,6 @@ export const exams = mysqlTable("exams", {
     duration: int("duration").notNull(), // in minutes
     type: mysqlEnum("type", ["FIXED", "DYNAMIC"]).notNull(),
     category: varchar("category", { length: 100 }), // e.g. "OSN", "Latihan Harian"
-    startTime: timestamp("start_time"),
-    endTime: timestamp("end_time"),
     isActive: boolean("is_active").default(true),
     createdAt: timestamp("created_at").defaultNow(),
     updatedAt: timestamp("updated_at").defaultNow().onUpdateNow(),
@@ -97,7 +103,7 @@ export const examAnswers = mysqlTable("exam_answers", {
     questionId: int("question_id").notNull(),
     answer: text("answer"), // Selected option ID or text
     isCorrect: boolean("is_correct"),
-    score: int("score").default(0), // Calculated score for this answer
+    score: double("score").default(0), // Calculated score (supports negative marking & fractional essay)
     feedback: text("feedback"), // Auto-generated feedback based on rubric
 });
 

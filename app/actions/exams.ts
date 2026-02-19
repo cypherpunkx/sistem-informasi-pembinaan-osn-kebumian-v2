@@ -1,12 +1,11 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { exams, examQuestions, examSessions, examAnswers, questions, options } from "@/lib/schema";
-import { eq, and, desc, inArray, sql } from "drizzle-orm";
+import { exams, examQuestions, examSessions, examAnswers, questions, options, users } from "@/lib/schema";
+import { eq, and, desc, inArray, sql, like } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { calculateQuestionScore, ScoringResult } from "@/lib/scoring";
+import { calculateQuestionScore, type ScoringQuestion } from "@/lib/scoring";
 
 // --- Exam Management (Admin/Pembina) ---
 
@@ -20,7 +19,320 @@ export async function getExams() {
     }
 }
 
-export async function createFixedExam(prevState: any, formData: FormData) {
+export interface ExamFilters {
+    search?: string;
+    type?: string;
+    category?: string;
+    status?: string; // "active" | "inactive" | "all"
+    page?: number;
+    limit?: number;
+}
+
+export interface GetExamsFilteredResult {
+    data: Awaited<ReturnType<typeof getExams>>;
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+export async function getExamsFiltered(filters: ExamFilters = {}): Promise<GetExamsFilteredResult> {
+    try {
+        const { search, type, category, status = "all", page = 1, limit = 12 } = filters;
+        const conditions = [];
+
+        if (search?.trim()) {
+            conditions.push(like(exams.title, `%${search.trim()}%`));
+        }
+        if (type && type !== "All") {
+            conditions.push(eq(exams.type, type as "FIXED" | "DYNAMIC"));
+        }
+        if (category?.trim()) {
+            conditions.push(eq(exams.category, category.trim()));
+        }
+        if (status === "active") {
+            conditions.push(eq(exams.isActive, true));
+        } else if (status === "inactive") {
+            conditions.push(eq(exams.isActive, false));
+        }
+
+        const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+        const [countRow] = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(exams)
+            .where(whereClause);
+        const total = Number(countRow?.count ?? 0);
+        const totalPages = Math.max(1, Math.ceil(total / limit));
+        const offset = (Math.max(1, page) - 1) * limit;
+
+        const data = await db
+            .select()
+            .from(exams)
+            .where(whereClause)
+            .orderBy(desc(exams.createdAt))
+            .limit(limit)
+            .offset(offset);
+
+        return { data, total, page: Math.max(1, page), limit, totalPages };
+    } catch (error) {
+        console.error("Failed to fetch exams (filtered):", error);
+        return { data: [], total: 0, page: 1, limit: 12, totalPages: 0 };
+    }
+}
+
+export interface ExamCounts {
+    examId: number;
+    questionCount: number;
+    participantCount: number;
+}
+
+/** Jumlah soal dan jumlah peserta (sesi selesai) per ujian. Untuk tampilan card manajemen ujian. */
+export async function getExamCountsForIds(examIds: number[]): Promise<ExamCounts[]> {
+    if (examIds.length === 0) return [];
+    try {
+        const questionCounts = await db
+            .select({ examId: examQuestions.examId, count: sql<number>`count(*)` })
+            .from(examQuestions)
+            .where(inArray(examQuestions.examId, examIds))
+            .groupBy(examQuestions.examId);
+        const participantCounts = await db
+            .select({ examId: examSessions.examId, count: sql<number>`count(*)` })
+            .from(examSessions)
+            .where(and(inArray(examSessions.examId, examIds), eq(examSessions.status, "COMPLETED")))
+            .groupBy(examSessions.examId);
+        const qMap = new Map(questionCounts.map((r) => [r.examId, Number(r.count)]));
+        const pMap = new Map(participantCounts.map((r) => [r.examId, Number(r.count)]));
+        return examIds.map((id) => ({
+            examId: id,
+            questionCount: qMap.get(id) ?? 0,
+            participantCount: pMap.get(id) ?? 0,
+        }));
+    } catch (error) {
+        console.error("Failed to fetch exam counts:", error);
+        return examIds.map((id) => ({ examId: id, questionCount: 0, participantCount: 0 }));
+    }
+}
+
+/** Daftar ujian aktif untuk peserta (Latihan & Ujian) dengan pagination. Hanya role peserta. */
+export async function getExamsForPeserta(filters: Omit<ExamFilters, "status"> & { page?: number; limit?: number } = {}): Promise<GetExamsFilteredResult> {
+    const session = await auth();
+    if (session?.user?.role !== "peserta") {
+        return { data: [], total: 0, page: 1, limit: 12, totalPages: 0 };
+    }
+    return getExamsFiltered({ ...filters, status: "active" });
+}
+
+export async function getDistinctExamCategories(): Promise<string[]> {
+    try {
+        const rows = await db
+            .selectDistinct({ category: exams.category })
+            .from(exams)
+            .where(sql`${exams.category} IS NOT NULL AND ${exams.category} != ''`);
+        const list = rows.map((r) => r.category).filter((c): c is string => !!c);
+        list.sort((a, b) => a.localeCompare(b));
+        return list;
+    } catch (error) {
+        console.error("Failed to fetch exam categories:", error);
+        return [];
+    }
+}
+
+export type ReportFilters = {
+    periodDays?: number;
+    category?: string;
+    type?: "FIXED" | "DYNAMIC" | "all";
+};
+
+export type ReportSummary = {
+    totalExams: number;
+    totalParticipants: number;
+    avgScore: number | null;
+    completionRate: number | null;
+};
+
+export type ReportTrendPoint = { label: string; count: number };
+export type ReportDistributionBucket = { bucket: string; count: number };
+export type ReportExamRow = {
+    examId: number;
+    title: string;
+    participantCount: number;
+    completedCount: number;
+    avgScore: number | null;
+    maxScore: number | null;
+    completionRate: number;
+};
+
+/** Data laporan: summary, tren peserta, distribusi nilai, performa per ujian. */
+export async function getReportData(filters: ReportFilters = {}) {
+    const { periodDays = 30, category, type = "all" } = filters;
+    try {
+        const periodStart = new Date();
+        periodStart.setDate(periodStart.getDate() - periodDays);
+        const periodStartStr = periodStart.toISOString().slice(0, 19).replace("T", " ");
+
+        const allSessionsInPeriod = await db
+            .select({
+                examId: examSessions.examId,
+                userId: examSessions.userId,
+                startTime: examSessions.startTime,
+                status: examSessions.status,
+                score: examSessions.score,
+            })
+            .from(examSessions)
+            .where(sql`${examSessions.startTime} >= ${periodStartStr}`);
+
+        let examIds = [...new Set(allSessionsInPeriod.map((s) => s.examId))];
+        if ((category && category !== "all") || (type && type !== "all")) {
+            const conditions = [inArray(exams.id, examIds)];
+            if (category && category !== "all") conditions.push(eq(exams.category, category));
+            if (type && type !== "all") conditions.push(eq(exams.type, type));
+            const filtered = await db
+                .select({ id: exams.id })
+                .from(exams)
+                .where(and(...conditions));
+            examIds = filtered.map((r) => r.id);
+        }
+        const sessionsInPeriod = allSessionsInPeriod.filter((s) => examIds.includes(s.examId));
+
+        const examList =
+            examIds.length === 0
+                ? []
+                : await db
+                    .select({ id: exams.id, title: exams.title })
+                    .from(exams)
+                    .where(inArray(exams.id, examIds));
+        if (examIds.length === 0) {
+            return {
+                summary: {
+                    totalExams: 0,
+                    totalParticipants: 0,
+                    avgScore: null,
+                    completionRate: null,
+                },
+                trend: [] as ReportTrendPoint[],
+                distribution: [
+                    { bucket: "0–40", count: 0 },
+                    { bucket: "41–60", count: 0 },
+                    { bucket: "61–80", count: 0 },
+                    { bucket: "81–100", count: 0 },
+                ],
+                examRows: [] as ReportExamRow[],
+            };
+        }
+
+        const totalParticipants = sessionsInPeriod.length;
+        const completedSessions = sessionsInPeriod.filter((s) => s.status === "COMPLETED");
+        const completedCount = completedSessions.length;
+        const completionRate =
+            totalParticipants > 0 ? Math.round((completedCount / totalParticipants) * 100) : null;
+        const scores = completedSessions
+            .map((s) => s.score)
+            .filter((s): s is number => s != null);
+        const avgScore =
+            scores.length > 0
+                ? Math.round((scores.reduce((a, b) => a + b, 0) / scores.length) * 10) / 10
+                : null;
+
+        const summary: ReportSummary = {
+            totalExams: examList.length,
+            totalParticipants,
+            avgScore,
+            completionRate: completionRate ?? null,
+        };
+
+        const byDay = new Map<string, number>();
+        for (let d = 0; d < periodDays; d++) {
+            const day = new Date(periodStart);
+            day.setDate(day.getDate() + d);
+            const key = day.toISOString().slice(0, 10);
+            byDay.set(key, 0);
+        }
+        sessionsInPeriod.forEach((s) => {
+            const t = s.startTime;
+            if (t == null) return;
+            const key = (t instanceof Date ? t : new Date(t as string)).toISOString().slice(0, 10);
+            if (byDay.has(key)) byDay.set(key, (byDay.get(key) ?? 0) + 1);
+        });
+        const trend: ReportTrendPoint[] = Array.from(byDay.entries())
+            .sort((a, b) => a[0].localeCompare(b[0]))
+            .map(([label, count]) => ({ label, count }));
+
+        const distBuckets = [
+            { key: "0–40", min: 0, max: 40 },
+            { key: "41–60", min: 41, max: 60 },
+            { key: "61–80", min: 61, max: 80 },
+            { key: "81–100", min: 81, max: 100 },
+        ];
+        const distCounts = distBuckets.map((b) => ({
+            bucket: b.key,
+            count: scores.filter((s) => s >= b.min && s <= b.max).length,
+        }));
+        const distribution = distCounts;
+
+        const examStats = new Map<
+            number,
+            { started: number; completed: number; scores: number[] }
+        >();
+        examList.forEach((e) => examStats.set(e.id, { started: 0, completed: 0, scores: [] }));
+        sessionsInPeriod.forEach((s) => {
+            const stat = examStats.get(s.examId);
+            if (!stat) return;
+            stat.started += 1;
+            if (s.status === "COMPLETED") {
+                stat.completed += 1;
+                if (s.score != null) stat.scores.push(s.score);
+            }
+        });
+        const examRows: ReportExamRow[] = examList.map((e) => {
+            const stat = examStats.get(e.id) ?? {
+                started: 0,
+                completed: 0,
+                scores: [] as number[],
+            };
+            const avg =
+                stat.scores.length > 0
+                    ? Math.round(
+                        (stat.scores.reduce((a, b) => a + b, 0) / stat.scores.length) * 10
+                    ) / 10
+                    : null;
+            const max = stat.scores.length > 0 ? Math.max(...stat.scores) : null;
+            const completionRateExam =
+                stat.started > 0 ? Math.round((stat.completed / stat.started) * 100) : 0;
+            return {
+                examId: e.id,
+                title: e.title,
+                participantCount: stat.started,
+                completedCount: stat.completed,
+                avgScore: avg,
+                maxScore: max,
+                completionRate: completionRateExam,
+            };
+        });
+
+        return { summary, trend, distribution, examRows };
+    } catch (error) {
+        console.error("Failed to fetch report data:", error);
+        return {
+            summary: {
+                totalExams: 0,
+                totalParticipants: 0,
+                avgScore: null,
+                completionRate: null,
+            },
+            trend: [],
+            distribution: [
+                { bucket: "0–40", count: 0 },
+                { bucket: "41–60", count: 0 },
+                { bucket: "61–80", count: 0 },
+                { bucket: "81–100", count: 0 },
+            ],
+            examRows: [],
+        };
+    }
+}
+
+export async function createFixedExam(_prevState: unknown, formData: FormData) {
     const title = formData.get("title") as string;
     const description = formData.get("description") as string;
     const duration = parseInt(formData.get("duration") as string);
@@ -31,13 +343,17 @@ export async function createFixedExam(prevState: any, formData: FormData) {
         return { message: "Missing required fields" };
     }
 
-    const questionIds = questionIdsRaw.split(",").map(id => parseInt(id.trim()));
+    const questionIds = questionIdsRaw.split(",").map(id => parseInt(id.trim(), 10));
+    const validQuestionIds = questionIds.filter((id): id is number => Number.isInteger(id) && id > 0);
+    if (validQuestionIds.length === 0) {
+        return { message: "No valid question IDs" };
+    }
 
     try {
         // Validate Question Status
         const selectedQuestions = await db.select({ id: questions.id, status: questions.status })
             .from(questions)
-            .where(inArray(questions.id, questionIds));
+            .where(inArray(questions.id, validQuestionIds));
 
         const invalidQuestions = selectedQuestions.filter(q => q.status !== "PUBLISHED");
 
@@ -58,7 +374,7 @@ export async function createFixedExam(prevState: any, formData: FormData) {
         const examId = result.id;
 
         // 2. Link Questions
-        const examQuestionValues = questionIds.map((qId, index) => ({
+        const examQuestionValues = validQuestionIds.map((qId, index) => ({
             examId,
             questionId: qId,
             order: index + 1,
@@ -103,6 +419,98 @@ export async function getExamById(id: number) {
     }
 }
 
+export type ExamDetailParticipant = {
+    name: string;
+    score: number | null;
+    status: string;
+    durationMinutes: number | null;
+};
+
+export type ExamDetailStats = {
+    avgScore: number | null;
+    minScore: number | null;
+    maxScore: number | null;
+    completedCount: number;
+};
+
+/** Data untuk halaman detail ujian (admin): exam, counts, stats, participants. */
+export async function getExamDetailData(examId: number) {
+    try {
+        const exam = await db.query.exams.findFirst({ where: eq(exams.id, examId) });
+        if (!exam) return null;
+
+        const [counts] = await Promise.all([
+            getExamCountsForIds([examId]).then((arr) => arr[0] ?? { examId, questionCount: 0, participantCount: 0 }),
+        ]);
+        const questionCount = counts.questionCount;
+        const [{ count: participantCountRaw }] = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(examSessions)
+            .where(eq(examSessions.examId, examId));
+        const participantCount = Number(participantCountRaw ?? 0);
+
+        const completedSessions = await db
+            .select({ score: examSessions.score })
+            .from(examSessions)
+            .where(and(eq(examSessions.examId, examId), eq(examSessions.status, "COMPLETED")));
+        const scores = completedSessions.map((s) => s.score).filter((n): n is number => n != null);
+        const avgScore = scores.length ? scores.reduce((a, b) => a + b, 0) / scores.length : null;
+        const minScore = scores.length ? Math.min(...scores) : null;
+        const maxScore = scores.length ? Math.max(...scores) : null;
+        const stats: ExamDetailStats = {
+            avgScore: avgScore != null ? Math.round(avgScore * 10) / 10 : null,
+            minScore,
+            maxScore,
+            completedCount: completedSessions.length,
+        };
+
+        const sessionsWithUser = await db
+            .select({
+                name: users.name,
+                score: examSessions.score,
+                status: examSessions.status,
+                startTime: examSessions.startTime,
+                endTime: examSessions.endTime,
+            })
+            .from(examSessions)
+            .leftJoin(users, sql`${users.id} = CAST(${examSessions.userId} AS SIGNED)`)
+            .where(eq(examSessions.examId, examId))
+            .orderBy(desc(examSessions.endTime));
+
+        const participants: ExamDetailParticipant[] = sessionsWithUser.map((row) => {
+            let durationMinutes: number | null = null;
+            if (row.endTime && row.startTime) {
+                const start = row.startTime instanceof Date ? row.startTime.getTime() : new Date(row.startTime).getTime();
+                const end = row.endTime instanceof Date ? row.endTime.getTime() : new Date(row.endTime).getTime();
+                durationMinutes = Math.round((end - start) / 60000);
+            }
+            return {
+                name: row.name ?? "—",
+                score: row.score ?? null,
+                status: row.status === "COMPLETED" ? "Selesai" : "Belum",
+                durationMinutes,
+            };
+        });
+
+        return {
+            exam,
+            questionCount,
+            participantCount,
+            stats,
+            participants,
+            questionsList: await db
+                .select({ id: questions.id, content: questions.content })
+                .from(examQuestions)
+                .leftJoin(questions, eq(examQuestions.questionId, questions.id))
+                .where(eq(examQuestions.examId, examId))
+                .orderBy(examQuestions.order),
+        };
+    } catch (error) {
+        console.error("Failed to fetch exam detail:", error);
+        return null;
+    }
+}
+
 export async function updateFixedExam(id: number, formData: FormData) {
     const title = formData.get("title") as string;
     const description = formData.get("description") as string;
@@ -117,13 +525,17 @@ export async function updateFixedExam(id: number, formData: FormData) {
         return { message: `Missing fields: Title=${!!title}, Duration=${!isNaN(duration)}, Qs=${!!questionIdsRaw}` };
     }
 
-    const questionIds = questionIdsRaw.split(",").map(id => parseInt(id.trim()));
+    const questionIds = questionIdsRaw.split(",").map(id => parseInt(id.trim(), 10));
+    const validQuestionIds = questionIds.filter((id): id is number => Number.isInteger(id) && id > 0);
+    if (validQuestionIds.length === 0) {
+        return { message: "No valid question IDs" };
+    }
 
     try {
         // Validate Question Status
         const selectedQuestions = await db.select({ id: questions.id, status: questions.status })
             .from(questions)
-            .where(inArray(questions.id, questionIds));
+            .where(inArray(questions.id, validQuestionIds));
 
         const invalidQuestions = selectedQuestions.filter(q => q.status !== "PUBLISHED");
 
@@ -142,7 +554,7 @@ export async function updateFixedExam(id: number, formData: FormData) {
         // Re-link questions (Delete all, then insert new)
         await db.delete(examQuestions).where(eq(examQuestions.examId, id));
 
-        const examQuestionValues = questionIds.map((qId, index) => ({
+        const examQuestionValues = validQuestionIds.map((qId, index) => ({
             examId: id,
             questionId: qId,
             order: index + 1,
@@ -163,9 +575,7 @@ export async function updateFixedExam(id: number, formData: FormData) {
 export async function deleteExam(id: number) {
     try {
         await db.delete(examQuestions).where(eq(examQuestions.examId, id));
-        await db.delete(examSessions).where(eq(examSessions.examId, id)); // Cascade delete sessions?
-        // Note: deleting sessions might leave orphan answers if not careful with foreign keys.
-        // Assuming cascade or acceptable data loss for deleted exams.
+        await db.delete(examSessions).where(eq(examSessions.examId, id));
 
         await db.delete(exams).where(eq(exams.id, id));
 
@@ -174,6 +584,55 @@ export async function deleteExam(id: number) {
     } catch (error) {
         console.error("Failed to delete exam:", error);
         return { success: false, message: "Failed to delete exam" };
+    }
+}
+
+/** Set isActive = false (arsip) atau true (aktifkan kembali). */
+export async function toggleExamArchive(id: number) {
+    try {
+        const [exam] = await db.select({ isActive: exams.isActive }).from(exams).where(eq(exams.id, id));
+        if (!exam) return { success: false, message: "Ujian tidak ditemukan" };
+        await db.update(exams).set({ isActive: !exam.isActive }).where(eq(exams.id, id));
+        revalidatePath("/dashboard/manajemen-ujian");
+        return { success: true, message: exam.isActive ? "Ujian diarsipkan" : "Ujian diaktifkan kembali" };
+    } catch (error) {
+        console.error("Failed to toggle exam archive:", error);
+        return { success: false, message: "Gagal mengubah status" };
+    }
+}
+
+/** Duplikat ujian: buat paket baru dengan judul "Salinan - {title}" dan soal yang sama. */
+export async function duplicateExam(id: number) {
+    try {
+        const [source] = await db.select().from(exams).where(eq(exams.id, id));
+        if (!source) return { success: false, message: "Ujian tidak ditemukan" };
+
+        const eqRows = await db.select({ questionId: examQuestions.questionId, order: examQuestions.order }).from(examQuestions).where(eq(examQuestions.examId, id));
+
+        const [newRow] = await db
+            .insert(exams)
+            .values({
+                title: `Salinan - ${source.title}`,
+                description: source.description,
+                duration: source.duration,
+                type: source.type,
+                category: source.category,
+                isActive: false,
+            })
+            .$returningId();
+        const newId = newRow.id;
+
+        if (eqRows.length > 0) {
+            await db.insert(examQuestions).values(
+                eqRows.map((r) => ({ examId: newId, questionId: r.questionId, order: r.order }))
+            );
+        }
+
+        revalidatePath("/dashboard/manajemen-ujian");
+        return { success: true, message: "Ujian diduplikat", newId };
+    } catch (error) {
+        console.error("Failed to duplicate exam:", error);
+        return { success: false, message: "Gagal menduplikat ujian" };
     }
 }
 
@@ -198,10 +657,6 @@ export async function startExamSession(examId: number) {
         });
 
         if (existingSession) {
-            console.log("=== Resuming Existing Session ===");
-            console.log("Session ID:", existingSession.id);
-            console.log("Original Start Time:", existingSession.startTime);
-            console.log("=================================");
             return { success: true, sessionId: existingSession.id };
         }
 
@@ -212,14 +667,9 @@ export async function startExamSession(examId: number) {
             return { message: "Exam not found" };
         }
 
-        console.log("Found exam:", { id: exam.id, title: exam.title, type: exam.type });
-
         // Fetch Exam Questions to shuffle
         const examQs = await db.select().from(examQuestions).where(eq(examQuestions.examId, examId));
         const questionIds = examQs.map(q => q.questionId);
-
-        console.log("Exam questions found:", questionIds.length);
-        console.log("Question IDs:", questionIds);
 
         if (questionIds.length === 0) {
             console.error("No questions assigned to exam ID:", examId);
@@ -228,8 +678,6 @@ export async function startExamSession(examId: number) {
 
         // Shuffle Question IDs
         const shuffledIds = fisherYatesShuffle(questionIds);
-
-        console.log("Shuffled question IDs:", shuffledIds);
 
         // Create new session with shuffled order
         const [result] = await db.insert(examSessions).values({
@@ -240,13 +688,6 @@ export async function startExamSession(examId: number) {
             questionOrder: shuffledIds, // Store randomized IDs
             startTime: new Date(), // Explicitly set start time
         }).$returningId();
-
-        console.log("=== New Exam Session Created ===");
-        console.log("Session ID:", result.id);
-        console.log("Start Time:", new Date().toISOString());
-        console.log("Exam Duration:", exam.duration, "minutes");
-        console.log("Total Questions:", questionIds.length);
-        console.log("================================");
 
         return { success: true, sessionId: result.id };
     } catch (error) {
@@ -272,11 +713,6 @@ export async function resetExamSession(examId: number) {
             )
         );
 
-        console.log("=== Exam Session Reset ===");
-        console.log("User ID:", userId);
-        console.log("Exam ID:", examId);
-        console.log("==========================");
-
         return { success: true, message: "Session reset successfully" };
     } catch (error) {
         console.error("Failed to reset session:", error);
@@ -286,9 +722,6 @@ export async function resetExamSession(examId: number) {
 
 export async function getExamSession(sessionId: number) {
     try {
-        console.log("=== Getting Exam Session ===");
-        console.log("Session ID:", sessionId);
-
         const session = await db.query.examSessions.findFirst({
             where: eq(examSessions.id, sessionId),
         });
@@ -298,8 +731,6 @@ export async function getExamSession(sessionId: number) {
             return null;
         }
 
-        console.log("Session found:", { id: session.id, examId: session.examId, status: session.status });
-
         // Fetch Exam
         const [exam] = await db.select().from(exams).where(eq(exams.id, session.examId));
 
@@ -307,8 +738,6 @@ export async function getExamSession(sessionId: number) {
             console.error("Exam not found for ID:", session.examId);
             return null;
         }
-
-        console.log("Exam found:", { id: exam.id, title: exam.title, duration: exam.duration });
 
         // Calculate time remaining (server-side for accuracy)
         if (!session.startTime) {
@@ -322,54 +751,33 @@ export async function getExamSession(sessionId: number) {
         const durationSeconds = exam.duration * 60;
         const timeRemaining = Math.max(0, durationSeconds - elapsedSeconds);
 
-        console.log("=== Server Time Calculation ===");
-        console.log("Session Start Time:", session.startTime);
-        console.log("Current Server Time:", new Date(now).toISOString());
-        console.log("Exam Duration (minutes):", exam.duration);
-        console.log("Exam Duration (seconds):", durationSeconds);
-        console.log("Elapsed Time (seconds):", elapsedSeconds);
-        console.log("Time Remaining (seconds):", timeRemaining);
-        console.log("Time Remaining (minutes):", Math.floor(timeRemaining / 60));
-        console.log("===============================");
-
         // Get Questions based on stored order OR default
         let qIds: number[] = [];
 
         if (session.questionOrder && Array.isArray(session.questionOrder) && session.questionOrder.length > 0) {
             qIds = session.questionOrder as number[];
-            console.log("Using stored question order:", qIds);
         } else {
             // Fallback for old sessions or errors: fetch from exam_questions
-            console.log("No stored order, fetching from exam_questions table...");
             const examqs = await db.select().from(examQuestions)
                 .where(eq(examQuestions.examId, session.examId))
                 .orderBy(examQuestions.order);
             qIds = examqs.map(eq => eq.questionId);
-            console.log("Fetched question IDs from exam_questions:", qIds);
         }
 
-        console.log("Total question IDs to load:", qIds.length);
-
-        let questionsData: any[] = [];
+        type QuestionRow = (typeof questions)["$inferSelect"];
+        type QuestionWithOptions = QuestionRow & { options: { id: number; content: string; isCorrect?: boolean; questionId?: number }[] };
+        let questionsData: QuestionWithOptions[] = [];
         if (qIds.length > 0) {
-            questionsData = await db.select().from(questions)
+            const questionRows = await db.select().from(questions)
                 .where(inArray(questions.id, qIds));
 
-            console.log("Questions loaded from DB:", questionsData.length);
-
-            // Get Options for these questions
             const optionsData = await db.select().from(options)
                 .where(inArray(options.questionId, qIds));
 
-            console.log("Options loaded from DB:", optionsData.length);
-
-            // Map options to questions
-            questionsData = questionsData.map(q => ({
+            questionsData = questionRows.map(q => ({
                 ...q,
                 options: optionsData.filter(o => o.questionId === q.id)
             }));
-
-            console.log("Questions with options mapped:", questionsData.map(q => ({ id: q.id, optionCount: q.options.length })));
 
             // Sort by the randomized order (qIds)
             questionsData.sort((a, b) => {
@@ -380,8 +788,6 @@ export async function getExamSession(sessionId: number) {
         } else {
             console.error("No question IDs found for session!");
         }
-
-        console.log("Final questions data count:", questionsData.length);
 
         return {
             session,
@@ -399,28 +805,34 @@ export async function getExamSession(sessionId: number) {
 
 export async function submitExamAnswer(sessionId: number, questionId: number, answer: string) {
     try {
-        // Validation: Check if session is active
+        const sessionAuth = await auth();
+        const currentUserId = sessionAuth?.user?.id;
+        if (!currentUserId) return { success: false, message: "Unauthorized" };
+
         const [session] = await db.select().from(examSessions).where(eq(examSessions.id, sessionId));
 
         if (!session) return { success: false, message: "Session not found" };
+        if (session.userId !== currentUserId) return { success: false, message: "Not your exam session" };
         if (session.status !== "IN_PROGRESS") return { success: false, message: "Exam session is closed" };
 
-        // Check if time has expired
-        const [exam] = await db.select().from(exams).where(eq(exams.id, session.examId));
         if (!session.startTime) return { success: false, message: "Invalid session start time" };
+
+        const [exam] = await db.select().from(exams).where(eq(exams.id, session.examId));
+        if (!exam) return { success: false, message: "Exam not found" };
+
         const startTime = new Date(session.startTime).getTime();
         const now = Date.now();
         const elapsedSeconds = Math.floor((now - startTime) / 1000);
         const durationSeconds = exam.duration * 60;
 
         if (elapsedSeconds > durationSeconds) {
-            // Auto-finish the exam if time expired
             await finishExam(sessionId);
             return { success: false, message: "Time expired. Exam has been auto-submitted." };
         }
 
-        // Fetch question type and options to grade
         const [question] = await db.select().from(questions).where(eq(questions.id, questionId));
+        if (!question) return { success: false, message: "Question not found" };
+
         let isCorrect = false;
 
         if (question.type === "MULTIPLE_CHOICE") {
@@ -454,9 +866,14 @@ export async function submitExamAnswer(sessionId: number, questionId: number, an
 
 export async function finishExam(sessionId: number) {
     try {
+        const sessionAuth = await auth();
+        const currentUserId = sessionAuth?.user?.id;
+        if (!currentUserId) return { success: false, message: "Unauthorized" };
+
         const [session] = await db.select().from(examSessions).where(eq(examSessions.id, sessionId));
 
         if (!session) return { success: false, message: "Session not found" };
+        if (session.userId !== currentUserId) return { success: false, message: "Not your exam session" };
         if (session.status === "COMPLETED") {
             return { success: true, score: session.score };
         }
@@ -470,7 +887,7 @@ export async function finishExam(sessionId: number) {
         const userAnswers = await db.select().from(examAnswers).where(eq(examAnswers.sessionId, sessionId));
 
         // 2. Initialize Category Accumulators
-        let stats = {
+        const stats = {
             PG: { earned: 0, max: 0 },
             SA: { earned: 0, max: 0 },
             ESSAY: { earned: 0, max: 0 }
@@ -488,9 +905,9 @@ export async function finishExam(sessionId: number) {
             else if (question.type === "SHORT_ANSWER") stats.SA.max += weight;
             else if (question.type === "ESSAY") stats.ESSAY.max += weight;
 
-            // Use shared scoring logic
+            // Use shared scoring logic (question from DB has compatible shape; weight/answerKeys/rubric may be null or JSON)
             const result = calculateQuestionScore(
-                question,
+                question as ScoringQuestion,
                 answerRecord?.answer || "",
                 optionsData.filter(o => o.questionId === question.id)
             );
@@ -511,20 +928,17 @@ export async function finishExam(sessionId: number) {
             else if (question.type === "ESSAY") stats.ESSAY.earned += earned;
         }
 
-        // 4. Calculate Final Weighted Score
-        // Formula: (PG_Earned / PG_Max * 30) + (SA_Earned / SA_Max * 30) + (Essay_Earned / Essay_Max * 40)
-
+        // 4. Calculate Final Weighted Score (selalu 0–100)
+        // Bobot: PG 30%, SA 30%, Essay 40%. Jika suatu tipe tidak ada, bobot hanya dari tipe yang ada.
         const scorePG = stats.PG.max > 0 ? (Math.max(0, stats.PG.earned) / stats.PG.max) * 30 : 0;
         const scoreSA = stats.SA.max > 0 ? (stats.SA.earned / stats.SA.max) * 30 : 0;
         const scoreEssay = stats.ESSAY.max > 0 ? (stats.ESSAY.earned / stats.ESSAY.max) * 40 : 0;
 
-        const finalScore = Math.round(scorePG + scoreSA + scoreEssay); // 0 - 100
-
-        console.log("=== Scoring Debug ===");
-        console.log("PG:", stats.PG, "->", scorePG);
-        console.log("SA:", stats.SA, "->", scoreSA);
-        console.log("Essay:", stats.ESSAY, "->", scoreEssay);
-        console.log("Final:", finalScore);
+        const totalWeight =
+            (stats.PG.max > 0 ? 30 : 0) + (stats.SA.max > 0 ? 30 : 0) + (stats.ESSAY.max > 0 ? 40 : 0);
+        const rawSum = scorePG + scoreSA + scoreEssay;
+        const finalScore =
+            totalWeight > 0 ? Math.round((rawSum / totalWeight) * 100) : 0;
 
         await db.update(examSessions).set({
             status: "COMPLETED",
@@ -548,12 +962,7 @@ export async function getExamHistory(page = 1, limit = 5) {
     const session = await auth();
     const userId = session?.user?.id;
 
-    console.log("=== Getting Exam History ===");
-    console.log("User ID:", userId);
-    console.log("Page:", page, "Limit:", limit);
-
     if (!userId) {
-        console.log("No user ID, returning empty array");
         return { data: [], total: 0, page, limit, totalPages: 0 };
     }
 
@@ -572,9 +981,10 @@ export async function getExamHistory(page = 1, limit = 5) {
             id: examSessions.id,
             date: examSessions.endTime,
             score: examSessions.score,
+            totalQuestions: examSessions.totalQuestions,
             status: examSessions.status,
             examTitle: exams.title,
-            feedback: examSessions.feedback, // Added feedback field
+            feedback: examSessions.feedback,
         })
             .from(examSessions)
             .leftJoin(exams, eq(examSessions.examId, exams.id))
@@ -582,10 +992,6 @@ export async function getExamHistory(page = 1, limit = 5) {
             .orderBy(desc(examSessions.startTime))
             .limit(limit)
             .offset(offset);
-
-        console.log("Exam history found:", history.length, "records");
-        console.log("Total records:", total, "Total pages:", totalPages);
-        console.log("============================");
 
         return {
             data: history,
@@ -668,17 +1074,24 @@ export async function getExamResult(sessionId: number) {
     }
 }
 
+/** Question payload for scoring simulation (e.g. from QuestionForm preview). Matches shape expected by calculateQuestionScore. */
+export interface SimulateQuestionPayload {
+    type: string;
+    weight?: number;
+    answerKeys?: { key: string; type: "TEXT" | "NUMERIC"; tolerance?: number }[];
+    rubric?: { component: string; keywords: string | string[]; points: number }[];
+    options?: { id: number; isCorrect?: boolean; questionId?: number }[];
+}
+
 export async function simulateQuestionScore(
-    questionData: any,
+    questionData: SimulateQuestionPayload,
     answer: string
 ) {
     try {
         const session = await auth();
-        // Allow if user is admin/pembina OR if it's a dry run from question form
-        // Ideally checking role here
         if (!session?.user) return { success: false, message: "Unauthorized" };
 
-        let optionsData: any[] = [];
+        let optionsData: { id: number; isCorrect?: boolean; questionId?: number }[] = [];
         // If question has ID (existing), fetch options. 
         // If it's a new question being drafted, options might need to be passed in. 
         // For now, let's assume this is used for EXISTING questions or passed fully.

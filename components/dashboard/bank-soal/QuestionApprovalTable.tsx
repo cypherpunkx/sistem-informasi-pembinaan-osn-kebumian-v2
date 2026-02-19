@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { approveQuestion, rejectQuestion } from "@/app/actions/questions";
-import { Check, X, Eye } from "lucide-react";
+import { Check, X, ChevronLeft, ChevronRight } from "lucide-react";
 
 interface Question {
     id: number;
@@ -16,9 +17,22 @@ interface Question {
 
 interface QuestionApprovalTableProps {
     questions: Question[];
+    total: number;
+    page: number;
+    totalPages: number;
+    limit: number;
 }
 
-export default function QuestionApprovalTable({ questions }: QuestionApprovalTableProps) {
+export default function QuestionApprovalTable({ questions, total, page, totalPages, limit }: QuestionApprovalTableProps) {
+    const router = useRouter();
+    const searchParams = useSearchParams();
+
+    const setApprovalPage = (newPage: number) => {
+        const params = new URLSearchParams(searchParams);
+        params.set("tab", "approval");
+        params.set("approvalPage", String(newPage));
+        router.push(`/dashboard/bank-soal?${params.toString()}`);
+    };
     const [processingId, setProcessingId] = useState<number | null>(null);
 
     const handleApprove = async (id: number) => {
@@ -76,8 +90,8 @@ export default function QuestionApprovalTable({ questions }: QuestionApprovalTab
                                         {q.type.replace("_", " ")}
                                     </span>
                                 </td>
-                                <td className="px-6 py-4 text-sm text-text-dark max-w-xs truncate">
-                                    {q.content.substring(0, 50)}...
+                                <td className="px-6 py-4 text-sm text-text-dark max-w-xs truncate" title={q.content}>
+                                    {q.content.length > 50 ? `${q.content.slice(0, 50)}...` : q.content}
                                 </td>
                                 <td className="px-6 py-4 whitespace-nowrap text-right text-sm font-medium">
                                     <div className="flex items-center justify-end gap-2">
@@ -104,6 +118,35 @@ export default function QuestionApprovalTable({ questions }: QuestionApprovalTab
                     </tbody>
                 </table>
             </div>
+
+            {totalPages > 1 && (
+                <div className="px-4 py-3 border-t border-neutral-warm/20 flex flex-col sm:flex-row items-center justify-between gap-2">
+                    <p className="text-sm text-text-dark/60">
+                        Menampilkan {(page - 1) * limit + 1}–{Math.min(page * limit, total)} dari {total}
+                    </p>
+                    <div className="flex items-center gap-2">
+                        <button
+                            type="button"
+                            onClick={() => setApprovalPage(page - 1)}
+                            disabled={page <= 1}
+                            className="inline-flex items-center gap-1 px-3 py-2 border border-neutral-warm/30 rounded-lg hover:bg-neutral-light/50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                        >
+                            <ChevronLeft className="w-4 h-4" /> Sebelumnya
+                        </button>
+                        <span className="px-3 py-2 text-sm text-text-dark/70">
+                            Halaman {page} / {totalPages}
+                        </span>
+                        <button
+                            type="button"
+                            onClick={() => setApprovalPage(page + 1)}
+                            disabled={page >= totalPages}
+                            className="inline-flex items-center gap-1 px-3 py-2 border border-neutral-warm/30 rounded-lg hover:bg-neutral-light/50 disabled:opacity-50 disabled:cursor-not-allowed text-sm"
+                        >
+                            Selanjutnya <ChevronRight className="w-4 h-4" />
+                        </button>
+                    </div>
+                </div>
+            )}
         </div>
     );
 }

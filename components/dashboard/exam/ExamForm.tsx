@@ -1,26 +1,21 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { Save } from "lucide-react";
 import { createFixedExam, updateFixedExam } from "@/app/actions/exams";
 import { useRouter } from "next/navigation";
 import QuestionSelector from "@/components/dashboard/exam/QuestionSelector";
 
 interface ExamFormProps {
-    initialData?: any;
+    initialData?: { id: number; title: string; description: string | null; duration: number; category: string | null; isActive: boolean | null; questions: { id: number | null }[] };
 }
 
 export default function ExamForm({ initialData }: ExamFormProps) {
     const router = useRouter();
     const [isLoading, setIsLoading] = useState(false);
     const [selectedQuestionIds, setSelectedQuestionIds] = useState<number[]>(
-        initialData?.questions?.map((q: any) => q.id) || []
+        initialData?.questions?.map((q) => q.id).filter((id): id is number => id != null) ?? []
     );
-
-    useEffect(() => {
-        console.log("ExamForm: initialData", initialData);
-        console.log("ExamForm: selectedQuestionIds", selectedQuestionIds);
-    }, [initialData, selectedQuestionIds]);
 
     const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
         e.preventDefault();
@@ -78,7 +73,7 @@ export default function ExamForm({ initialData }: ExamFormProps) {
                         <label className="block text-sm font-medium text-text-dark mb-1">Description</label>
                         <textarea
                             name="description"
-                            defaultValue={initialData?.description}
+                            defaultValue={initialData?.description ?? ''}
                             rows={3}
                             className="w-full px-3 py-2 border border-neutral-warm/30 rounded-lg"
                             placeholder="Instructions for students..."
@@ -101,7 +96,7 @@ export default function ExamForm({ initialData }: ExamFormProps) {
                             <label className="block text-sm font-medium text-text-dark mb-1">Category</label>
                             <select
                                 name="category"
-                                defaultValue={initialData?.category}
+                                defaultValue={initialData?.category ?? ''}
                                 className="w-full px-3 py-2 border border-neutral-warm/30 rounded-lg"
                             >
                                 <option value="Latihan">Latihan</option>
@@ -117,7 +112,7 @@ export default function ExamForm({ initialData }: ExamFormProps) {
                             type="checkbox"
                             name="isActive"
                             id="isActive"
-                            defaultChecked={initialData ? initialData.isActive : true}
+                            defaultChecked={initialData ? (initialData.isActive ?? true) : true}
                             className="w-4 h-4 text-accent-earthy"
                         />
                         <label htmlFor="isActive" className="text-sm font-medium text-text-dark">Is Active (Visible to Students)</label>

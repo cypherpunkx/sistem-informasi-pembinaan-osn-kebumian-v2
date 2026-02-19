@@ -4,12 +4,27 @@ import WeeklyProgressChart from "./peserta/WeeklyProgressChart";
 import ExamHistoryTable from "./peserta/ExamHistoryTable";
 import { getExamHistory } from "@/app/actions/exams";
 import { getUserStats } from "@/app/actions/progress";
+import { getRecommendations } from "@/app/actions/recommendations";
+import { getTopicScoreTrend, getDominantWeaknesses } from "@/app/actions/analytics";
+import { getTopicAccuracy } from "@/app/actions/recommendations";
 import ProgressCharts from "./progress/ProgressCharts";
+import RecommendationDashboard from "./RecommendationDashboard";
+import DominantWeaknessSection from "./DominantWeaknessSection";
+import TopicRadarChart from "./progress/TopicRadarChart";
+import TopicTrendChart from "./progress/TopicTrendChart";
+import TargetPeningkatanCard from "./TargetPeningkatanCard";
 
 export default async function PesertaDashboard() {
-    const historyData = await getExamHistory(1, 5); // Get first page with 5 items
+    const [historyData, stats, recommendations, topicTrend, dominantWeaknesses, topicAccuracy] = await Promise.all([
+        getExamHistory(1, 5),
+        getUserStats(),
+        getRecommendations(),
+        getTopicScoreTrend(undefined, { weeks: 8 }),
+        getDominantWeaknesses(undefined, 5),
+        getTopicAccuracy(),
+    ]);
     const lastExam = historyData.data.length > 0 ? historyData.data[0] : null;
-    const stats = await getUserStats();
+    const radarData = topicAccuracy.map((t) => ({ topic: t.topic, accuracy: t.accuracy }));
 
     return (
         <div className="space-y-6">
@@ -53,6 +68,34 @@ export default async function PesertaDashboard() {
                 </div>
             )}
 
+            {/* Kelemahan dominan */}
+            <div>
+                <DominantWeaknessSection weaknesses={dominantWeaknesses} />
+            </div>
+
+            {/* Tren nilai pribadi & Radar topik */}
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-warm/20">
+                    <h3 className="text-lg font-bold text-text-dark mb-4">Tren nilai per topik</h3>
+                    <TopicTrendChart series={topicTrend} />
+                </div>
+                <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-warm/20">
+                    <h3 className="text-lg font-bold text-text-dark">Akurasi per topik</h3>
+                    <p className="text-sm text-text-dark/60 mb-1">Profil kemampuan per bidang (Kebumian). Hover untuk nilai lengkap.</p>
+                    <TopicRadarChart data={radarData} />
+                </div>
+            </div>
+
+            {/* Recommendations */}
+            <div>
+                <RecommendationDashboard recommendations={recommendations} />
+            </div>
+
+            {/* Target peningkatan */}
+            <div>
+                <TargetPeningkatanCard weakestTopic={dominantWeaknesses[0] ?? null} />
+            </div>
+
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                 {/* Side Panel / Additional Stats or Actions - Takes up 1 column */}
                 <div className="lg:col-span-3 space-y-6">
@@ -68,7 +111,18 @@ export default async function PesertaDashboard() {
 
             {/* Detailed History Table */}
             <div>
-                <ExamHistoryTable initialData={historyData} />
+                <ExamHistoryTable
+                    initialData={historyData}
+                    summary={
+                        stats?.exams
+                            ? {
+                                  totalCompleted: stats.exams.totalTaken ?? 0,
+                                  averageScore: stats.exams.averageScore ?? 0,
+                                  bestScore: (stats.exams as { bestScore?: number }).bestScore ?? 0,
+                              }
+                            : undefined
+                    }
+                />
             </div>
         </div>
     );

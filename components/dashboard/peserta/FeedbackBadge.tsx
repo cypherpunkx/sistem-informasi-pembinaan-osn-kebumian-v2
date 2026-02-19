@@ -1,14 +1,16 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { MessageSquare, X } from "lucide-react";
+import { MessageSquare, X, Calendar } from "lucide-react";
 import { createPortal } from "react-dom";
 
 interface FeedbackBadgeProps {
     feedback: string;
+    /** Tanggal feedback (mis. endTime sesi ujian) untuk konteks. */
+    feedbackDate?: Date | string | null;
 }
 
-export default function FeedbackBadge({ feedback }: FeedbackBadgeProps) {
+export default function FeedbackBadge({ feedback, feedbackDate }: FeedbackBadgeProps) {
     const [isOpen, setIsOpen] = useState(false);
     const [mounted, setMounted] = useState(false);
 
@@ -44,7 +46,19 @@ export default function FeedbackBadge({ feedback }: FeedbackBadgeProps) {
                                 <div className="p-2 bg-blue-100 text-blue-600 rounded-lg">
                                     <MessageSquare className="w-5 h-5" />
                                 </div>
-                                <h3 className="font-semibold text-text-dark">Instructor Feedback</h3>
+                                <div>
+                                    <h3 className="font-semibold text-text-dark">Feedback</h3>
+                                    {feedbackDate && (
+                                        <p className="flex items-center gap-1.5 mt-0.5 text-xs text-text-dark/60">
+                                            <Calendar className="w-3.5 h-3.5" />
+                                            {new Date(feedbackDate).toLocaleString("id-ID", {
+                                                dateStyle: "medium",
+                                                timeStyle: "short",
+                                                timeZone: "Asia/Jakarta",
+                                            })}
+                                        </p>
+                                    )}
+                                </div>
                             </div>
                             <button
                                 onClick={closeModal}
@@ -55,8 +69,10 @@ export default function FeedbackBadge({ feedback }: FeedbackBadgeProps) {
                         </div>
 
                         <div className="p-6 max-h-[60vh] overflow-y-auto">
-                            <div className="prose prose-sm max-w-none text-text-dark whitespace-pre-wrap">
-                                {feedback}
+                            <div className="rounded-lg border border-blue-100 bg-blue-50/50 p-4">
+                                <p className="text-sm text-text-dark whitespace-pre-wrap leading-relaxed">
+                                    {feedback}
+                                </p>
                             </div>
                         </div>
 

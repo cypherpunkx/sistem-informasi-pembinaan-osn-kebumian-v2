@@ -38,7 +38,7 @@ export default function FeedbackForm({ sessionId, initialFeedback, onSubmitSucce
                 setSuccess(true);
                 setTimeout(() => {
                     onSubmitSuccess();
-                }, 1000);
+                }, 400);
             } else {
                 setError(result.message || "Failed to save feedback");
             }

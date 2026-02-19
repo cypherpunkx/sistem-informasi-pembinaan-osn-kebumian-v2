@@ -1,10 +1,9 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { materials } from "@/lib/schema";
-import { eq, like, or, desc, and } from "drizzle-orm";
+import { materials, users } from "@/lib/schema";
+import { eq, like, or, desc, and, sql } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
-import { redirect } from "next/navigation";
 
 import { auth } from "@/auth";
 
@@ -39,11 +38,11 @@ export async function getMaterials({
     }
 
     if (type && type !== "All") {
-        filters.push(eq(materials.type, type as any));
+        filters.push(eq(materials.type, type as "PDF" | "VIDEO" | "SLIDE" | "TEXT"));
     }
 
     if (status && status !== "All") {
-        filters.push(eq(materials.status, status as any));
+        filters.push(eq(materials.status, status as "DRAFT" | "PENDING" | "PUBLISHED" | "ARCHIVED"));
     }
 
     try {
@@ -57,6 +56,151 @@ export async function getMaterials({
         console.error("Failed to fetch materials:", error);
         return [];
     }
+}
+
+export interface GetMaterialsForPesertaResult {
+    data: Awaited<ReturnType<typeof getMaterials>>;
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+const DEFAULT_PAGE_SIZE = 10;
+const MIN_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 100;
+
+export interface MaterialFilters {
+    search?: string;
+    topic?: string;
+    type?: string;
+    status?: string;
+    page?: number;
+    limit?: number;
+}
+
+export interface GetMaterialsFilteredResult {
+    data: Awaited<ReturnType<typeof getMaterials>>;
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+export async function getMaterialsFiltered(filters: MaterialFilters = {}): Promise<GetMaterialsFilteredResult> {
+    const session = await auth();
+    const userRole = session?.user?.role;
+    if (userRole !== "admin" && userRole !== "pembina") {
+        return { data: [], total: 0, page: 1, limit: DEFAULT_PAGE_SIZE, totalPages: 0 };
+    }
+
+    const { search, topic, type, status, page = 1, limit: rawLimit = DEFAULT_PAGE_SIZE } = filters;
+    const limit = Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, rawLimit));
+
+    const conditions = [];
+    if (search?.trim()) {
+        conditions.push(or(like(materials.title, `%${search.trim()}%`), like(materials.description, `%${search.trim()}%`)));
+    }
+    if (topic && topic !== "All") conditions.push(eq(materials.topic, topic));
+    if (type && type !== "All") conditions.push(eq(materials.type, type as "PDF" | "VIDEO" | "SLIDE" | "TEXT"));
+    if (status && status !== "All") conditions.push(eq(materials.status, status as "DRAFT" | "PENDING" | "PUBLISHED" | "ARCHIVED"));
+
+    const whereClause = conditions.length > 0 ? and(...conditions) : undefined;
+
+    const [countRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(materials)
+        .where(whereClause);
+    const total = Number(countRow?.count ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (Math.max(1, page) - 1) * limit;
+
+    const data = await db
+        .select()
+        .from(materials)
+        .where(whereClause)
+        .orderBy(desc(materials.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+    return { data, total, page: Math.max(1, page), limit, totalPages };
+}
+
+export interface GetPendingMaterialsFilteredResult {
+    data: Awaited<ReturnType<typeof getMaterials>>;
+    total: number;
+    page: number;
+    limit: number;
+    totalPages: number;
+}
+
+export async function getPendingMaterialsFiltered(filters: { page?: number; limit?: number } = {}): Promise<GetPendingMaterialsFilteredResult> {
+    const { page = 1, limit: rawLimit = DEFAULT_PAGE_SIZE } = filters;
+    const limit = Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, rawLimit));
+
+    const whereClause = eq(materials.status, "PENDING");
+
+    const [countRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(materials)
+        .where(whereClause);
+    const total = Number(countRow?.count ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (Math.max(1, page) - 1) * limit;
+
+    const data = await db
+        .select()
+        .from(materials)
+        .where(whereClause)
+        .orderBy(desc(materials.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+    return { data, total, page: Math.max(1, page), limit, totalPages };
+}
+
+export async function getMaterialsForPeserta(filters: {
+    search?: string;
+    topic?: string;
+    type?: string;
+    page?: number;
+    limit?: number;
+} = {}): Promise<GetMaterialsForPesertaResult> {
+    const session = await auth();
+    if (session?.user?.role !== "peserta") {
+        return { data: [], total: 0, page: 1, limit: DEFAULT_PAGE_SIZE, totalPages: 0 };
+    }
+
+    const { search, topic, type, page = 1, limit: rawLimit = DEFAULT_PAGE_SIZE } = filters;
+    const limit = Math.min(MAX_PAGE_SIZE, Math.max(MIN_PAGE_SIZE, rawLimit));
+
+    const conditions = [eq(materials.status, "PUBLISHED")];
+    if (search?.trim()) {
+        const searchCond = or(like(materials.title, `%${search.trim()}%`), like(materials.description, `%${search.trim()}%`));
+        if (searchCond) conditions.push(searchCond);
+    }
+    if (topic && topic !== "All") conditions.push(eq(materials.topic, topic));
+    if (type && type !== "All") conditions.push(eq(materials.type, type as "PDF" | "VIDEO" | "SLIDE" | "TEXT"));
+
+    const whereClause = and(...conditions);
+
+    const [countRow] = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(materials)
+        .where(whereClause);
+    const total = Number(countRow?.count ?? 0);
+    const totalPages = Math.max(1, Math.ceil(total / limit));
+    const offset = (Math.max(1, page) - 1) * limit;
+
+    const data = await db
+        .select()
+        .from(materials)
+        .where(whereClause)
+        .orderBy(desc(materials.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+    return { data, total, page: Math.max(1, page), limit, totalPages };
 }
 
 export async function getMaterialById(id: number) {
@@ -75,7 +219,7 @@ export async function getMaterialById(id: number) {
 
 
 
-export async function createMaterial(prevState: any, formData: FormData) {
+export async function createMaterial(_prevState: unknown, formData: FormData) {
     const session = await auth();
     const userRole = session?.user?.role || "pembina";
 
@@ -175,17 +319,31 @@ export async function deleteMaterial(id: number) {
         revalidatePath("/dashboard/materi");
         return { message: "Material deleted." };
     } catch (error) {
+        console.error("Failed to delete material:", error);
         return { message: "Database Error: Failed to Delete Material." };
     }
 }
 
 export async function updateMaterialStatus(id: number, status: "DRAFT" | "PENDING" | "PUBLISHED" | "ARCHIVED") {
+    const session = await auth();
+    if (!session?.user?.id) return { success: false, message: "Unauthorized" };
+
+    const currentUser = await db.query.users.findFirst({
+        where: eq(users.id, parseInt(session.user.id)),
+    });
+    if (!currentUser) return { success: false, message: "User not found" };
+
+    if (status === "PUBLISHED" && currentUser.role !== "admin") {
+        return { success: false, message: "Hanya admin yang dapat menerbitkan (publish) materi." };
+    }
+
     try {
         await db.update(materials).set({ status }).where(eq(materials.id, id));
         revalidatePath("/dashboard/manajemen-materi");
         revalidatePath("/dashboard/materi");
         return { success: true, message: "Status updated." };
     } catch (error) {
+        console.error("Failed to update material status:", error);
         return { success: false, message: "Failed to update status." };
     }
 }

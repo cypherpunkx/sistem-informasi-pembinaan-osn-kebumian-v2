@@ -13,3 +13,13 @@ export function fisherYatesShuffle<T>(array: T[]): T[] {
     }
     return shuffled;
 }
+
+/** Normalize topic: trim, then first letter uppercase per word, rest lowercase. */
+export function normalizeTopic(value: string): string {
+    const trimmed = value.trim().replace(/\s+/g, " ");
+    if (!trimmed) return trimmed;
+    return trimmed
+        .split(" ")
+        .map((word) => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase())
+        .join(" ");
+}
