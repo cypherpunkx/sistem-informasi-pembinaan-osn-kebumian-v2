@@ -6,8 +6,8 @@
   --color-accent-earthy: #ab886d;
   --color-text-dark: #493628;
 
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: ui-sans-serif, system-ui, "Segoe UI", Roboto, sans-serif;
+  --font-mono: ui-monospace, "Cascadia Mono", "Segoe UI Mono", monospace;
 }
 
 :root {
@@ -45,3 +45,13 @@ body {
 .animate-delete-modal {
   animation: delete-modal-scale-in 0.15s ease-out;
 }
+
+/* Public news article content */
+.news-content h2 { font-size: 1.5rem; font-weight: 700; margin-top: 1.5rem; margin-bottom: 0.5rem; }
+.news-content h3 { font-size: 1.25rem; font-weight: 600; margin-top: 1.25rem; margin-bottom: 0.5rem; }
+.news-content p { margin-bottom: 1rem; }
+.news-content ul, .news-content ol { margin-bottom: 1rem; padding-left: 1.5rem; }
+.news-content li { margin-bottom: 0.25rem; }
+.news-content a { color: var(--color-accent-earthy); text-decoration: underline; }
+.news-content a:hover { opacity: 0.9; }
+.news-content img { max-width: 100%; height: auto; border-radius: 0.5rem; }

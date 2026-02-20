@@ -52,8 +52,8 @@ function LaporanPageSkeleton() {
                 <div className="h-10 w-36 bg-neutral-warm/20 rounded-xl" />
             </div>
             <hr className="border-neutral-warm/30" />
-            <div className="grid grid-cols-4 gap-4">
-                {[1, 2, 3, 4].map((i) => (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+                {[1, 2, 3, 4, 5].map((i) => (
                     <div key={i} className="h-24 rounded-xl bg-neutral-warm/20" />
                 ))}
             </div>

@@ -10,7 +10,9 @@ import {
     TrendingUp,
     HelpCircle,
     User,
-    LogOut
+    Newspaper,
+    LogOut,
+    Globe,
 } from "lucide-react";
 import { logout } from "@/app/actions/auth";
 
@@ -22,7 +24,9 @@ const roleNavItems = {
         { name: "Manajemen Ujian", href: "/dashboard/manajemen-ujian", icon: FileText },
         { name: "Manajemen Pengguna", href: "/dashboard/manajemen-pengguna", icon: User },
         { name: "Laporan & Analitik", href: "/dashboard/laporan", icon: TrendingUp },
-        { name: "Pengaturan", href: "/dashboard/pengaturan", icon: HelpCircle }, // Using HelpCircle as placeholder for Settings if needed, or import Settings icon
+        { name: "News / Pengumuman", href: "/dashboard/news", icon: Newspaper },
+        { name: "Pengaturan Situs", href: "/dashboard/situs", icon: Globe },
+        { name: "Pengaturan", href: "/dashboard/pengaturan", icon: HelpCircle },
     ],
     pembina: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },
@@ -30,6 +34,8 @@ const roleNavItems = {
         { name: "Bank Soal", href: "/dashboard/bank-soal", icon: Database },
         { name: "Manajemen Ujian", href: "/dashboard/manajemen-ujian", icon: FileText },
         { name: "Nilai & Feedback", href: "/dashboard/nilai", icon: TrendingUp },
+        { name: "News / Pengumuman", href: "/dashboard/news", icon: Newspaper },
+        { name: "Pengaturan Situs", href: "/dashboard/situs", icon: Globe },
     ],
     peserta: [
         { name: "Dashboard", href: "/dashboard", icon: LayoutDashboard },

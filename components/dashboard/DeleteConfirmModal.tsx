@@ -11,6 +11,8 @@ interface DeleteConfirmModalProps {
     description: string;
     /** Potongan konten yang akan dihapus (soal/materi) untuk konteks */
     previewText?: string;
+    /** Teks peringatan tambahan (mis. "Tindakan ini tidak dapat dibatalkan.") */
+    irreversibleHint?: string;
     confirmLabel?: string;
     cancelLabel?: string;
     isPending?: boolean;
@@ -23,6 +25,7 @@ export default function DeleteConfirmModal({
     title,
     description,
     previewText,
+    irreversibleHint,
     confirmLabel = "Hapus",
     cancelLabel = "Batal",
     isPending = false,
@@ -56,39 +59,45 @@ export default function DeleteConfirmModal({
                 onClick={onClose}
                 aria-hidden="true"
             />
-            <div className="relative w-full max-w-sm animate-delete-modal rounded-xl border border-neutral-warm/40 bg-white shadow-lg">
-                <div className="flex flex-col items-center gap-4 px-6 py-6 text-center sm:px-7 sm:py-7">
+            <div className="relative w-full max-w-sm animate-delete-modal rounded-xl border border-neutral-warm/20 bg-white shadow-sm overflow-hidden">
+                <div className="flex flex-col items-center gap-6 px-6 py-7 text-center sm:px-7 sm:py-8 min-w-0">
                     <div
                         className="flex h-12 w-12 shrink-0 items-center justify-center rounded-full bg-red-100 text-red-600"
                         aria-hidden
                     >
                         <AlertTriangle className="h-6 w-6" strokeWidth={2} />
                     </div>
-                    <div className="space-y-2 min-w-0 w-full">
+                    <div className="space-y-4 min-w-0 w-full">
                         <h2
                             id="delete-modal-title"
-                            className="text-lg font-semibold text-text-dark px-0.5"
+                            className="text-lg font-semibold text-text-dark px-0.5 break-words"
                         >
                             {title}
                         </h2>
                         {previewText && (
-                            <div className="rounded-lg border border-neutral-warm/30 bg-neutral-light/30 px-3 py-2.5 text-left">
-                                <p className="text-xs font-medium text-text-dark/60 uppercase tracking-wide mb-1">
+                            <div className="rounded-lg border border-neutral-warm/30 bg-neutral-light/30 px-3 py-3 text-left min-w-0 overflow-hidden">
+                                <p className="text-xs font-medium text-text-dark/60 uppercase tracking-wide mb-1.5">
                                     Yang akan dihapus
                                 </p>
-                                <p className="text-sm text-text-dark line-clamp-3 wrap-break-word">
+                                <p className="text-sm text-text-dark line-clamp-3 break-words whitespace-normal">
                                     &ldquo;{previewText}&rdquo;
                                 </p>
                             </div>
                         )}
                         <p
                             id="delete-modal-desc"
-                            className="text-sm text-text-dark/70 px-0.5"
+                            className="text-sm text-text-dark/70 text-left w-full max-w-full min-w-0 break-words whitespace-normal [overflow-wrap:anywhere]"
                         >
                             {description}
                         </p>
+                        {irreversibleHint && (
+                            <p className="text-xs text-amber-700/90 bg-amber-50 border border-amber-200/60 rounded-lg px-3 py-2 text-left flex items-center gap-2 min-w-0 break-words">
+                                <span className="shrink-0" aria-hidden>⚠</span>
+                                <span>{irreversibleHint}</span>
+                            </p>
+                        )}
                     </div>
-                    <div className="flex w-full gap-3 pt-1">
+                    <div className="flex w-full gap-4 pt-1">
                         <button
                             type="button"
                             onClick={onClose}

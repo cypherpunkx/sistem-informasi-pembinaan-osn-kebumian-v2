@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { users, questions, materials, exams } from "@/lib/schema";
-import { sql, and, gte } from "drizzle-orm";
+import { sql, eq, gte } from "drizzle-orm";
 import { auth } from "@/auth";
 
 /**
@@ -37,17 +37,11 @@ export async function getAdminDashboardStats() {
             .select({ count: sql<number>`count(*)` })
             .from(materials);
 
-        // Active exams (scheduled exams that are currently active or upcoming)
-        const now = new Date();
+        // Active exams (definitions with isActive = true, consistent with getExamsFiltered)
         const [activeExamsResult] = await db
             .select({ count: sql<number>`count(*)` })
             .from(exams)
-            .where(
-                and(
-                    gte(exams.endTime, now),
-                    sql`${exams.startTime} IS NOT NULL`
-                )
-            );
+            .where(eq(exams.isActive, true));
 
         // User growth (last 30 days)
         const thirtyDaysAgo = new Date();
@@ -119,17 +113,11 @@ export async function getPembinaDashboardStats() {
             .select({ count: sql<number>`count(*)` })
             .from(exams);
 
-        // Active exams (scheduled exams that are currently active or upcoming)
-        const now = new Date();
+        // Active exams (definitions with isActive = true, consistent with getExamsFiltered)
         const [activeExamsResult] = await db
             .select({ count: sql<number>`count(*)` })
             .from(exams)
-            .where(
-                and(
-                    gte(exams.endTime, now),
-                    sql`${exams.startTime} IS NOT NULL`
-                )
-            );
+            .where(eq(exams.isActive, true));
 
         return {
             totalStudents: Number(totalStudentsResult?.count || 0),

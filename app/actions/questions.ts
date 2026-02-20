@@ -1,8 +1,8 @@
 "use server";
 
 import { db } from "@/lib/db";
-import { questions, options as optionsTable, users } from "@/lib/schema";
-import { eq, desc, like, and, sql } from "drizzle-orm";
+import { questions, options as optionsTable, users, examQuestions } from "@/lib/schema";
+import { eq, desc, like, and, sql, countDistinct } from "drizzle-orm";
 import { revalidatePath } from "next/cache";
 import { auth } from "@/auth";
 import { normalizeTopic } from "@/lib/utils";
@@ -290,15 +290,35 @@ export async function updateQuestion(id: number, formData: FormData) {
     }
 }
 
+export async function getQuestionExamUsage(questionId: number): Promise<{ examCount: number }> {
+    const [row] = await db
+        .select({ n: countDistinct(examQuestions.examId) })
+        .from(examQuestions)
+        .where(eq(examQuestions.questionId, questionId));
+    return { examCount: Number(row?.n ?? 0) };
+}
+
 export async function deleteQuestion(id: number) {
     try {
+        const [usedRow] = await db
+            .select({ n: countDistinct(examQuestions.examId) })
+            .from(examQuestions)
+            .where(eq(examQuestions.questionId, id));
+        const examCount = Number(usedRow?.n ?? 0);
+
+        await db.delete(examQuestions).where(eq(examQuestions.questionId, id));
         await db.delete(optionsTable).where(eq(optionsTable.questionId, id));
         await db.delete(questions).where(eq(questions.id, id));
         revalidatePath("/dashboard/bank-soal");
-        return { success: true };
+
+        const message =
+            examCount > 0
+                ? `Soal dihapus. Dikeluarkan dari ${examCount} ujian.`
+                : undefined;
+        return { success: true, message };
     } catch (error) {
         console.error("Failed to delete question:", error);
-        return { success: false, message: "Failed to delete question" };
+        return { success: false, message: "Gagal menghapus soal." };
     }
 }
 

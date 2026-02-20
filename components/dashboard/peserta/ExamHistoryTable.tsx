@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { getExamHistory } from "@/app/actions/exams";
 import { ChevronLeft, ChevronRight, Award, Target, TrendingUp } from "lucide-react";
+import { SESSION_STATUS_LABELS } from "@/lib/status-labels";
 
 import FeedbackBadge from "./FeedbackBadge";
 
@@ -77,9 +78,9 @@ export default function ExamHistoryTable({
     return (
         <div className="bg-white p-6 rounded-xl shadow-sm border border-neutral-warm/20">
             <div className="flex justify-between items-center mb-4">
-                <h3 className="text-lg font-bold text-text-dark">Recent Practice History</h3>
+                <h3 className="text-lg font-bold text-text-dark">Riwayat Latihan Terbaru</h3>
                 <div className="text-sm text-text-dark/60">
-                    Total: {total} exams
+                    Total: {total} ujian
                 </div>
             </div>
 
@@ -120,18 +121,18 @@ export default function ExamHistoryTable({
                 <table className="min-w-full divide-y divide-neutral-warm/20">
                     <thead className="bg-neutral-light">
                         <tr>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Date</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Exam Name</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Score</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Tanggal</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Nama Ujian</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Skor</th>
                             <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Status</th>
-                            <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Feedback</th>
+                            <th className="px-6 py-3 text-left text-xs font-medium text-text-dark/60 uppercase tracking-wider">Umpan Balik</th>
                         </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-neutral-warm/20">
                         {loading ? (
                             <tr>
                                 <td colSpan={5} className="px-6 py-10 text-center text-text-dark/50 italic">
-                                    Loading...
+                                    Memuat...
                                 </td>
                             </tr>
                         ) : data.length > 0 ? (
@@ -148,7 +149,7 @@ export default function ExamHistoryTable({
                                         }) : "-"}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap text-sm font-medium text-text-dark">
-                                        {item.examTitle || "Unknown Exam"}
+                                        {item.examTitle || "Ujian tidak diketahui"}
                                     </td>
                                     <td className="px-6 py-4 whitespace-nowrap">
                                         {item.status === "COMPLETED" ? (() => {
@@ -168,14 +169,14 @@ export default function ExamHistoryTable({
                         ${item.status === "COMPLETED" ? "bg-green-100 text-green-800" :
                                                 item.status === "IN_PROGRESS" ? "bg-yellow-100 text-yellow-800" :
                                                     "bg-red-100 text-red-800"}`}>
-                                            {item.status?.replace("_", " ")}
+                                            {item.status ? (SESSION_STATUS_LABELS[item.status] ?? item.status) : "-"}
                                         </span>
                                     </td>
                                     <td className="px-6 py-4 text-sm">
                                         {item.feedback ? (
                                             <FeedbackBadge feedback={item.feedback} feedbackDate={item.date} />
                                         ) : (
-                                            <span className="text-text-dark/40 italic text-xs">No feedback</span>
+                                            <span className="text-text-dark/40 italic text-xs">Tidak ada umpan balik</span>
                                         )}
                                     </td>
                                 </tr>
@@ -183,7 +184,7 @@ export default function ExamHistoryTable({
                         ) : (
                             <tr>
                                 <td colSpan={5} className="px-6 py-10 text-center text-text-dark/50 italic">
-                                    No exam history found. Start a practice session!
+                                    Belum ada riwayat ujian. Mulai sesi latihan!
                                 </td>
                             </tr>
                         )}
@@ -195,7 +196,7 @@ export default function ExamHistoryTable({
             {totalPages > 1 && (
                 <div className="flex items-center justify-between mt-4 pt-4 border-t border-neutral-warm/20">
                     <div className="text-sm text-text-dark/60">
-                        Page {currentPage} of {totalPages}
+                        Halaman {currentPage} dari {totalPages}
                     </div>
                     <div className="flex gap-2">
                         <button
@@ -204,7 +205,7 @@ export default function ExamHistoryTable({
                             className="px-3 py-2 rounded-lg border border-neutral-warm/20 text-text-dark hover:bg-neutral-warm/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
                         >
                             <ChevronLeft className="w-4 h-4" />
-                            Previous
+                            Sebelumnya
                         </button>
 
                         {/* Page numbers */}
@@ -242,7 +243,7 @@ export default function ExamHistoryTable({
                             disabled={currentPage === totalPages || loading}
                             className="px-3 py-2 rounded-lg border border-neutral-warm/20 text-text-dark hover:bg-neutral-warm/10 disabled:opacity-50 disabled:cursor-not-allowed transition-colors flex items-center gap-1"
                         >
-                            Next
+                            Selanjutnya
                             <ChevronRight className="w-4 h-4" />
                         </button>
                     </div>

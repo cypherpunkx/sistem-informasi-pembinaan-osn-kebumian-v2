@@ -72,30 +72,7 @@ export async function getTopicAccuracy(requestedUserId?: string): Promise<TopicA
             });
         });
 
-        // Dummy data hanya bila belum ada data ujian, agar tidak duplikat dengan topik dari DB (e.g. Geology vs Geologi)
-        if (results.length === 0) {
-            results.push({
-                topic: "Kebumian: Geologi",
-                totalQuestions: 15,
-                correctAnswers: 7,
-                accuracy: 46.7,
-                priority: "HIGH"
-            });
-            results.push({
-                topic: "Kebumian: Meteorologi",
-                totalQuestions: 10,
-                correctAnswers: 5,
-                accuracy: 50,
-                priority: "MEDIUM"
-            });
-            results.push({
-                topic: "Kebumian: Oseanografi",
-                totalQuestions: 8,
-                correctAnswers: 6,
-                accuracy: 75,
-                priority: "MEDIUM"
-            });
-        }
+        // Tanpa dummy data: jika belum ada riwayat ujian, rekomendasi kosong (tampil pesan ajakan kerjakan latihan dulu).
 
         // Sort by Priority (High first) then Accuracy (Ascending)
         return results.sort((a, b) => {

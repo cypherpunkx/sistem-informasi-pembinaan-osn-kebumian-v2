@@ -146,7 +146,10 @@ export type ReportFilters = {
 
 export type ReportSummary = {
     totalExams: number;
+    /** Jumlah peserta unik (count distinct user) dalam periode */
     totalParticipants: number;
+    /** Jumlah total sesi / pengerjaan ujian dalam periode */
+    totalSessions: number;
     avgScore: number | null;
     completionRate: number | null;
 };
@@ -207,6 +210,7 @@ export async function getReportData(filters: ReportFilters = {}) {
                 summary: {
                     totalExams: 0,
                     totalParticipants: 0,
+                    totalSessions: 0,
                     avgScore: null,
                     completionRate: null,
                 },
@@ -221,11 +225,13 @@ export async function getReportData(filters: ReportFilters = {}) {
             };
         }
 
-        const totalParticipants = sessionsInPeriod.length;
+        const totalSessions = sessionsInPeriod.length;
+        const uniqueParticipantIds = new Set(sessionsInPeriod.map((s) => s.userId));
+        const totalParticipants = uniqueParticipantIds.size;
         const completedSessions = sessionsInPeriod.filter((s) => s.status === "COMPLETED");
         const completedCount = completedSessions.length;
         const completionRate =
-            totalParticipants > 0 ? Math.round((completedCount / totalParticipants) * 100) : null;
+            totalSessions > 0 ? Math.round((completedCount / totalSessions) * 100) : null;
         const scores = completedSessions
             .map((s) => s.score)
             .filter((s): s is number => s != null);
@@ -237,6 +243,7 @@ export async function getReportData(filters: ReportFilters = {}) {
         const summary: ReportSummary = {
             totalExams: examList.length,
             totalParticipants,
+            totalSessions,
             avgScore,
             completionRate: completionRate ?? null,
         };
@@ -254,6 +261,7 @@ export async function getReportData(filters: ReportFilters = {}) {
             const key = (t instanceof Date ? t : new Date(t as string)).toISOString().slice(0, 10);
             if (byDay.has(key)) byDay.set(key, (byDay.get(key) ?? 0) + 1);
         });
+        // Trend: tetap jumlah sesi per hari (bisa diganti jadi unik per hari jika diinginkan)
         const trend: ReportTrendPoint[] = Array.from(byDay.entries())
             .sort((a, b) => a[0].localeCompare(b[0]))
             .map(([label, count]) => ({ label, count }));
@@ -272,13 +280,16 @@ export async function getReportData(filters: ReportFilters = {}) {
 
         const examStats = new Map<
             number,
-            { started: number; completed: number; scores: number[] }
+            { started: number; completed: number; scores: number[]; uniqueUserIds: Set<string> }
         >();
-        examList.forEach((e) => examStats.set(e.id, { started: 0, completed: 0, scores: [] }));
+        examList.forEach((e) =>
+            examStats.set(e.id, { started: 0, completed: 0, scores: [], uniqueUserIds: new Set() })
+        );
         sessionsInPeriod.forEach((s) => {
             const stat = examStats.get(s.examId);
             if (!stat) return;
             stat.started += 1;
+            stat.uniqueUserIds.add(s.userId);
             if (s.status === "COMPLETED") {
                 stat.completed += 1;
                 if (s.score != null) stat.scores.push(s.score);
@@ -289,6 +300,7 @@ export async function getReportData(filters: ReportFilters = {}) {
                 started: 0,
                 completed: 0,
                 scores: [] as number[],
+                uniqueUserIds: new Set<string>(),
             };
             const avg =
                 stat.scores.length > 0
@@ -302,7 +314,7 @@ export async function getReportData(filters: ReportFilters = {}) {
             return {
                 examId: e.id,
                 title: e.title,
-                participantCount: stat.started,
+                participantCount: stat.uniqueUserIds.size,
                 completedCount: stat.completed,
                 avgScore: avg,
                 maxScore: max,
@@ -317,6 +329,7 @@ export async function getReportData(filters: ReportFilters = {}) {
             summary: {
                 totalExams: 0,
                 totalParticipants: 0,
+                totalSessions: 0,
                 avgScore: null,
                 completionRate: null,
             },

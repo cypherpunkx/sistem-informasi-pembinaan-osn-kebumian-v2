@@ -11,6 +11,7 @@ import {
   getQuestionsFiltered,
   getPendingQuestionsFiltered,
   deleteQuestion,
+  getQuestionExamUsage,
   updateQuestionStatus,
   type GetPendingQuestionsFilteredResult,
 } from '@/app/actions/questions';
@@ -167,7 +168,7 @@ export default async function QuestionBankPage({
         >
           <Pencil className="w-4 h-4" />
         </Link>
-        <DeleteQuestionButton questionId={row.id} contentPreview={row.content} onDelete={deleteQuestion} />
+        <DeleteQuestionButton questionId={row.id} contentPreview={row.content} onDelete={deleteQuestion} getExamUsage={getQuestionExamUsage} />
       </div>
     ),
   }));

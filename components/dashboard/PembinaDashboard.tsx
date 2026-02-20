@@ -81,27 +81,26 @@ export default async function PembinaDashboard() {
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-                {/* Satu CTA ke workspace review: ringkas, navigasi ke Nilai & Feedback (full KPI ada di sana) */}
+                {/* CTA ke Nilai & Feedback: sesi yang perlu ditindak lanjuti */}
                 <Link
                     href="/dashboard/nilai"
-                    className={`p-6 bg-amber-50/70 shadow-sm border border-amber-300/80 ${cardBase} relative overflow-hidden cursor-pointer hover:shadow-md`}
+                    className={`p-6 bg-amber-50/70 shadow-sm border border-amber-300/80 ${cardBase} cursor-pointer hover:shadow-md`}
                     aria-label="Tinjau sesi yang menunggu feedback di Nilai & Feedback"
                 >
-                    <div className="absolute top-2 right-2">
-                        <span className="text-[10px] font-bold uppercase tracking-wider text-amber-700 bg-amber-200/70 px-2 py-0.5 rounded">
-                            Perlu ditindak
-                        </span>
-                    </div>
                     <div className="p-3 bg-amber-400/90 text-white rounded-full shrink-0">
                         <MessageSquare className="w-6 h-6" />
                     </div>
                     <div className="min-w-0">
                         <p className="text-sm font-medium text-amber-800">Pending Feedback</p>
                         <p className="text-2xl font-bold text-amber-900">{stats.pendingFeedback ?? 0}</p>
-                        <p className="text-xs text-amber-700/80 mt-0.5">Tinjau di Nilai & Feedback →</p>
+                        <p className="text-xs text-amber-700/80 mt-0.5">Perlu ditindak lanjuti · Tinjau di Nilai & Feedback →</p>
                     </div>
                 </Link>
-                <div className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}>
+                <Link
+                    href="/dashboard/manajemen-pengguna"
+                    className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}
+                    aria-label="Lihat manajemen pengguna"
+                >
                     <div className="p-3 bg-blue-100 text-blue-600 rounded-full shrink-0">
                         <Users className="w-6 h-6" />
                     </div>
@@ -109,8 +108,12 @@ export default async function PembinaDashboard() {
                         <p className="text-sm text-text-dark/60">Mentored Students</p>
                         <p className="text-2xl font-bold text-text-dark">{stats.totalStudents}</p>
                     </div>
-                </div>
-                <div className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}>
+                </Link>
+                <Link
+                    href="/dashboard/manajemen-materi"
+                    className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}
+                    aria-label="Lihat manajemen materi"
+                >
                     <div className="p-3 bg-green-100 text-green-600 rounded-full shrink-0">
                         <BookOpen className="w-6 h-6" />
                     </div>
@@ -118,8 +121,12 @@ export default async function PembinaDashboard() {
                         <p className="text-sm text-text-dark/60">Uploaded Materials</p>
                         <p className="text-2xl font-bold text-text-dark">{stats.totalMaterials}</p>
                     </div>
-                </div>
-                <div className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}>
+                </Link>
+                <Link
+                    href="/dashboard/nilai"
+                    className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}
+                    aria-label="Lihat nilai dan skor"
+                >
                     <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full shrink-0">
                         <FileCheck className="w-6 h-6" />
                     </div>
@@ -134,7 +141,7 @@ export default async function PembinaDashboard() {
                             </p>
                         )}
                     </div>
-                </div>
+                </Link>
             </div>
 
             {/* Tren nilai per topik per peserta */}
