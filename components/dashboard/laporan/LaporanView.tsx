@@ -228,6 +228,7 @@ export default function LaporanView({
                         <p className="text-3xl font-bold text-text-dark mt-2 tabular-nums">
                             {summary.totalParticipants.toLocaleString("id-ID")}
                         </p>
+                        <p className="text-xs text-text-dark/50 mt-2">Peserta yang pernah memulai setidaknya satu ujian dalam periode ini</p>
                     </div>
                     <div className="p-3 bg-green-100 rounded-lg shrink-0">
                         <Users className="w-6 h-6 text-green-600" aria-hidden />
@@ -250,7 +251,7 @@ export default function LaporanView({
                         <p className="text-3xl font-bold text-text-dark mt-2 tabular-nums">
                             {summary.completionRate != null ? `${summary.completionRate}%` : "—"}
                         </p>
-                        <p className="text-xs text-text-dark/50 mt-2">peserta selesai mengerjakan</p>
+                        <p className="text-xs text-text-dark/50 mt-2">Persentase peserta (di atas) yang setidaknya menyelesaikan satu ujian</p>
                     </div>
                     <div className="p-3 bg-emerald-100 rounded-lg shrink-0">
                         <CheckCircle className="w-6 h-6 text-emerald-600" aria-hidden />

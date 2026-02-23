@@ -37,7 +37,10 @@ function ScoreWithContext({ score, showLabel = true }: { score: number | string;
     );
 }
 
-const cardBase = "rounded-xl flex items-center gap-4 transition-shadow duration-200 hover:shadow-md cursor-default";
+/** Kartu yang bisa diklik (CTA). */
+const cardClickable = "rounded-xl flex items-center gap-4 transition-shadow duration-200 hover:shadow-md cursor-pointer";
+/** Kartu statistik hanya tampilan (tidak diklik). */
+const cardStatic = "rounded-xl flex items-center gap-4 bg-white shadow-sm border border-neutral-warm/20 cursor-default select-none";
 
 export default async function PembinaDashboard() {
     const [stats, studentsRaw, cohortRec, subtopicWeak, hardFailures, consistencyLabels] = await Promise.all([
@@ -84,7 +87,7 @@ export default async function PembinaDashboard() {
                 {/* Satu CTA ke workspace review: ringkas, navigasi ke Nilai & Feedback (full KPI ada di sana) */}
                 <Link
                     href="/dashboard/nilai"
-                    className={`p-6 bg-amber-50/70 shadow-sm border border-amber-300/80 ${cardBase} relative overflow-hidden cursor-pointer hover:shadow-md`}
+                    className={`p-6 bg-amber-50/70 shadow-sm border border-amber-300/80 ${cardClickable} relative overflow-hidden`}
                     aria-label="Tinjau sesi yang menunggu feedback di Nilai & Feedback"
                 >
                     <div className="absolute top-2 right-2">
@@ -101,25 +104,27 @@ export default async function PembinaDashboard() {
                         <p className="text-xs text-amber-700/80 mt-0.5">Tinjau di Nilai & Feedback →</p>
                     </div>
                 </Link>
-                <div className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}>
+                <div className={`p-6 ${cardStatic}`} role="img" aria-label="Jumlah peserta bimbingan: statistik">
                     <div className="p-3 bg-blue-100 text-blue-600 rounded-full shrink-0">
                         <Users className="w-6 h-6" />
                     </div>
                     <div>
                         <p className="text-sm text-text-dark/60">Mentored Students</p>
                         <p className="text-2xl font-bold text-text-dark">{stats.totalStudents}</p>
+                        <p className="text-xs text-text-dark/50 mt-0.5">Informasi</p>
                     </div>
                 </div>
-                <div className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}>
+                <div className={`p-6 ${cardStatic}`} role="img" aria-label="Jumlah materi: statistik">
                     <div className="p-3 bg-green-100 text-green-600 rounded-full shrink-0">
                         <BookOpen className="w-6 h-6" />
                     </div>
                     <div>
                         <p className="text-sm text-text-dark/60">Uploaded Materials</p>
                         <p className="text-2xl font-bold text-text-dark">{stats.totalMaterials}</p>
+                        <p className="text-xs text-text-dark/50 mt-0.5">Informasi</p>
                     </div>
                 </div>
-                <div className={`p-6 bg-white shadow-sm border border-neutral-warm/20 ${cardBase} cursor-pointer`}>
+                <div className={`p-6 ${cardStatic}`} role="img" aria-label="Rata-rata nilai kelas: statistik">
                     <div className="p-3 bg-indigo-100 text-indigo-600 rounded-full shrink-0">
                         <FileCheck className="w-6 h-6" />
                     </div>
@@ -133,6 +138,7 @@ export default async function PembinaDashboard() {
                                 {stats.avgClassScoreTrend >= 0 ? "↑" : "↓"} {Math.abs(stats.avgClassScoreTrend)}% dari minggu lalu
                             </p>
                         )}
+                        <p className="text-xs text-text-dark/50 mt-0.5">Informasi</p>
                     </div>
                 </div>
             </div>

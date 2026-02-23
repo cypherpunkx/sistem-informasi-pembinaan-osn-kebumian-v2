@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { users, questions, materials, exams } from "@/lib/schema";
-import { sql, and, gte } from "drizzle-orm";
+import { sql, and, gte, lte, or, isNull } from "drizzle-orm";
 import { auth } from "@/auth";
 
 /**
@@ -37,15 +37,16 @@ export async function getAdminDashboardStats() {
             .select({ count: sql<number>`count(*)` })
             .from(materials);
 
-        // Active exams (scheduled exams that are currently active or upcoming)
+        // Active exams: sedang buka = (availableEnd >= now) dan (availableStart null atau <= now)
         const now = new Date();
         const [activeExamsResult] = await db
             .select({ count: sql<number>`count(*)` })
             .from(exams)
             .where(
                 and(
-                    gte(exams.endTime, now),
-                    sql`${exams.startTime} IS NOT NULL`
+                    sql`${exams.availableEnd} IS NOT NULL`,
+                    gte(exams.availableEnd, now),
+                    or(isNull(exams.availableStart), lte(exams.availableStart, now))
                 )
             );
 
@@ -119,15 +120,16 @@ export async function getPembinaDashboardStats() {
             .select({ count: sql<number>`count(*)` })
             .from(exams);
 
-        // Active exams (scheduled exams that are currently active or upcoming)
+        // Active exams: sedang buka = (availableEnd >= now) dan (availableStart null atau <= now)
         const now = new Date();
         const [activeExamsResult] = await db
             .select({ count: sql<number>`count(*)` })
             .from(exams)
             .where(
                 and(
-                    gte(exams.endTime, now),
-                    sql`${exams.startTime} IS NOT NULL`
+                    sql`${exams.availableEnd} IS NOT NULL`,
+                    gte(exams.availableEnd, now),
+                    or(isNull(exams.availableStart), lte(exams.availableStart, now))
                 )
             );
 

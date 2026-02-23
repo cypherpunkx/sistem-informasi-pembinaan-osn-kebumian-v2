@@ -221,7 +221,12 @@ export async function getMaterialById(id: number) {
 
 export async function createMaterial(_prevState: unknown, formData: FormData) {
     const session = await auth();
-    const userRole = session?.user?.role || "pembina";
+    if (!session?.user?.id) return { message: "Unauthorized" };
+    const currentUser = await db.query.users.findFirst({
+        where: eq(users.id, parseInt(String(session.user.id), 10)),
+    });
+    if (currentUser?.role === "peserta") return { message: "Peserta hanya boleh mengerjakan ujian." };
+    const userRole = currentUser?.role || "pembina";
 
     const title = formData.get("title") as string;
     const description = formData.get("description") as string;
@@ -269,7 +274,12 @@ export async function createMaterial(_prevState: unknown, formData: FormData) {
 
 export async function updateMaterial(id: number, formData: FormData) {
     const session = await auth();
-    const userRole = session?.user?.role || "pembina";
+    if (!session?.user?.id) return { message: "Unauthorized" };
+    const currentUser = await db.query.users.findFirst({
+        where: eq(users.id, parseInt(String(session.user.id), 10)),
+    });
+    if (currentUser?.role === "peserta") return { message: "Peserta hanya boleh mengerjakan ujian." };
+    const userRole = currentUser?.role || "pembina";
 
     const title = formData.get("title") as string;
     const description = formData.get("description") as string;
@@ -313,6 +323,12 @@ export async function updateMaterial(id: number, formData: FormData) {
 }
 
 export async function deleteMaterial(id: number) {
+    const session = await auth();
+    if (!session?.user?.id) return { message: "Unauthorized" };
+    const currentUser = await db.query.users.findFirst({
+        where: eq(users.id, parseInt(String(session.user.id), 10)),
+    });
+    if (currentUser?.role === "peserta") return { message: "Peserta hanya boleh mengerjakan ujian." };
     try {
         await db.delete(materials).where(eq(materials.id, id));
         revalidatePath("/dashboard/manajemen-materi");

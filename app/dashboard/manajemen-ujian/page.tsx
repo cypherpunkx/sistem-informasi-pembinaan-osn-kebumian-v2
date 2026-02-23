@@ -73,6 +73,8 @@ export default async function ExamManagementPage({
                   category: exam.category,
                   isActive: exam.isActive,
                   createdAt: exam.createdAt,
+                  availableStart: exam.availableStart ?? undefined,
+                  availableEnd: exam.availableEnd ?? undefined,
                 }}
                 counts={counts}
                 typeLabel={typeLabel}

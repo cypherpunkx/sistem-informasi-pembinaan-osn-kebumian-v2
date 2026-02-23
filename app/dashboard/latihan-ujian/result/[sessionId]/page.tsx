@@ -117,7 +117,11 @@ export default async function ExamResultPage({
                                                           : 'bg-red-100 text-red-700 border-red-200'
                                                     }`}
                           >
-                            {item.earnedScore} / {item.weight} pts
+                            {typeof item.earnedScore === 'number'
+                              ? Number(item.earnedScore.toFixed(2))
+                              : item.earnedScore} / {typeof item.weight === 'number'
+                              ? Number((item.weight as number).toFixed(2))
+                              : item.weight} pts
                           </span>
                         </div>
                       </div>

@@ -14,9 +14,11 @@ export async function getUserStats(userId?: string) {
     if (!targetUserId) return null;
 
     try {
-        // 1. Material Progress
-        // Count total materials
-        const materialCountQuery = await db.select({ count: sql<number>`count(*)` }).from(materials);
+        // 1. Material Progress (hanya materi PUBLISHED agar persentase = selesai / yang bisa dikerjakan)
+        const materialCountQuery = await db
+            .select({ count: sql<number>`count(*)` })
+            .from(materials)
+            .where(eq(materials.status, "PUBLISHED"));
         const totalMaterials = materialCountQuery[0].count;
 
         // Count completed materials
@@ -124,6 +126,10 @@ export async function markMaterialComplete(materialId: number) {
     if (!userId) return { success: false, message: "Unauthorized" };
 
     try {
+        const [material] = await db.select({ id: materials.id, status: materials.status }).from(materials).where(eq(materials.id, materialId)).limit(1);
+        if (!material) return { success: false, message: "Materi tidak ditemukan." };
+        if (material.status !== "PUBLISHED") return { success: false, message: "Hanya materi yang sudah dipublikasikan dapat ditandai selesai." };
+
         const existing = await db.select().from(userProgress).where(and(eq(userProgress.userId, userId), eq(userProgress.materialId, materialId)));
 
         if (existing.length > 0) {

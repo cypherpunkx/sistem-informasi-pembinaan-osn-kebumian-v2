@@ -1,12 +1,70 @@
-import Link from "next/link";
-import { PlayCircle, Clock, BookOpen, PenTool } from "lucide-react";
 import { getExamsForPeserta } from "@/app/actions/exams";
 import LatihanUjianFilters from "@/components/dashboard/latihan-ujian/LatihanUjianFilters";
 import LatihanUjianPagination from "@/components/dashboard/latihan-ujian/LatihanUjianPagination";
+import ExamCardPeserta, { type ExamWithStatus } from "@/components/dashboard/latihan-ujian/ExamCardPeserta";
 
 const DEFAULT_LIMIT = 12;
 const MIN_LIMIT = 10;
 const MAX_LIMIT = 100;
+
+type ExamRow = Awaited<ReturnType<typeof getExamsForPeserta>>["data"][number];
+
+function computeStatusAndMeta(exam: ExamRow, now: Date): ExamWithStatus {
+    const start = exam.availableStart != null ? new Date(exam.availableStart) : null;
+    const end = exam.availableEnd != null ? new Date(exam.availableEnd) : null;
+
+    let status: ExamWithStatus["status"] = "ongoing";
+    let minutesUntilEnd: number | null = null;
+    let ditutupPukul: string | null = null;
+    let mulaiLabel: string | null = null;
+
+    if (end && now > end) {
+        status = "ended";
+    } else if (start && now < start) {
+        status = "upcoming";
+        const mins = Math.max(0, Math.ceil((start.getTime() - now.getTime()) / 60000));
+        if (mins <= 60) {
+            mulaiLabel = `Mulai dalam ${mins} menit`;
+        } else {
+            mulaiLabel = `Mulai ${start.toLocaleDateString("id-ID", { day: "numeric", month: "short" })} pukul ${start.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false })}`;
+        }
+    } else {
+        status = "ongoing";
+        if (end) {
+            minutesUntilEnd = Math.max(0, Math.ceil((end.getTime() - now.getTime()) / 60000));
+            ditutupPukul = end.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+        }
+    }
+
+    return {
+        ...exam,
+        status,
+        minutesUntilEnd: minutesUntilEnd ?? undefined,
+        ditutupPukul: ditutupPukul ?? undefined,
+        mulaiLabel: mulaiLabel ?? undefined,
+    };
+}
+
+function sortByPriority(a: ExamWithStatus, b: ExamWithStatus): number {
+    const order = { ongoing: 0, upcoming: 1, ended: 2 };
+    if (order[a.status] !== order[b.status]) return order[a.status] - order[b.status];
+    if (a.status === "ongoing" && b.status === "ongoing") {
+        const ma = a.minutesUntilEnd ?? Infinity;
+        const mb = b.minutesUntilEnd ?? Infinity;
+        return ma - mb;
+    }
+    if (a.status === "upcoming" && b.status === "upcoming") {
+        const ta = a.availableStart ? new Date(a.availableStart).getTime() : 0;
+        const tb = b.availableStart ? new Date(b.availableStart).getTime() : 0;
+        return ta - tb;
+    }
+    if (a.status === "ended" && b.status === "ended") {
+        const ta = a.availableEnd ? new Date(a.availableEnd).getTime() : 0;
+        const tb = b.availableEnd ? new Date(b.availableEnd).getTime() : 0;
+        return tb - ta;
+    }
+    return 0;
+}
 
 export default async function ExamListPage({
     searchParams,
@@ -19,7 +77,7 @@ export default async function ExamListPage({
     const rawLimit = parseInt(params?.limit ?? String(DEFAULT_LIMIT), 10);
     const limit = Math.min(MAX_LIMIT, Math.max(MIN_LIMIT, isNaN(rawLimit) ? DEFAULT_LIMIT : rawLimit));
 
-    const { data: activeExams, total, totalPages, limit: resultLimit } = await getExamsForPeserta({
+    const { data: rawExams, total, totalPages, limit: resultLimit } = await getExamsForPeserta({
         search: params?.search,
         type: params?.type,
         category: params?.category,
@@ -27,21 +85,21 @@ export default async function ExamListPage({
         limit,
     });
 
+    const now = new Date();
+    const examsWithStatus: ExamWithStatus[] = rawExams
+        .map((exam) => computeStatusAndMeta(exam, now))
+        .sort(sortByPriority);
+
     return (
         <div className="space-y-6">
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
-                <div>
-                    <h1 className="text-2xl font-bold text-text-dark">Latihan & Ujian</h1>
-                    <p className="text-text-dark/60 mt-1">Pilih ujian atau sesi latihan untuk memulai.</p>
-                </div>
-                <button disabled className="flex items-center justify-center gap-2 px-4 py-2 bg-neutral-warm/20 text-text-dark/40 font-bold rounded-lg cursor-not-allowed">
-                    <PenTool className="w-4 h-4" /> Custom Practice (Coming Soon)
-                </button>
+            <div>
+                <h1 className="text-2xl font-bold text-text-dark">Latihan & Ujian</h1>
+                <p className="text-text-dark/60 mt-1">Pilih ujian atau sesi latihan untuk memulai.</p>
             </div>
 
             <LatihanUjianFilters />
 
-            {activeExams.length > 0 ? (
+            {examsWithStatus.length > 0 ? (
                 <>
                     {total > 0 && (
                         <p className="text-sm text-text-dark/60">
@@ -51,37 +109,8 @@ export default async function ExamListPage({
                     <div className="bg-white rounded-xl shadow-sm border border-neutral-warm/20 overflow-hidden">
                         <div className="p-6">
                             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                                {activeExams.map((exam) => (
-                                    <div key={exam.id} className="bg-white rounded-xl shadow-sm border border-neutral-warm/20 overflow-hidden hover:shadow-md transition-shadow flex flex-col h-full">
-                                        <div className="p-5 flex-1">
-                                            <span className={`text-xs font-bold px-2 py-1 rounded uppercase tracking-wide mb-3 inline-block
-                                                ${exam.type === "FIXED" ? "bg-purple-100 text-purple-700" : "bg-blue-100 text-blue-700"}`}>
-                                                {exam.category || exam.type}
-                                            </span>
-                                            <h3 className="font-bold text-text-dark text-lg mb-2">{exam.title}</h3>
-                                            <p className="text-text-dark/70 text-sm line-clamp-3 mb-4">
-                                                {exam.description || "Tidak ada deskripsi."}
-                                            </p>
-                                            <div className="flex items-center gap-4 text-sm text-text-dark/60 mt-auto">
-                                                <div className="flex items-center gap-1">
-                                                    <Clock className="w-4 h-4" />
-                                                    <span>{exam.duration} menit</span>
-                                                </div>
-                                                <div className="flex items-center gap-1">
-                                                    <BookOpen className="w-4 h-4" />
-                                                    <span>{exam.type === "FIXED" ? "Standar" : "Adaptif"}</span>
-                                                </div>
-                                            </div>
-                                        </div>
-                                        <div className="p-4 border-t border-neutral-warm/20 bg-neutral-light/20">
-                                            <Link
-                                                href={`/dashboard/latihan-ujian/${exam.id}`}
-                                                className="flex items-center justify-center w-full px-4 py-2 bg-accent-earthy text-white font-bold rounded-lg hover:bg-text-dark transition-colors gap-2"
-                                            >
-                                                <PlayCircle className="w-4 h-4" /> Mulai Ujian
-                                            </Link>
-                                        </div>
-                                    </div>
+                                {examsWithStatus.map((exam) => (
+                                    <ExamCardPeserta key={exam.id} exam={exam} />
                                 ))}
                             </div>
                         </div>

@@ -8,6 +8,7 @@ import {
     CheckCircle,
     Flag,
     AlertTriangle,
+    Info,
 } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { startExamSession, getExamSession, submitExamAnswer, finishExam } from "@/app/actions/exams";
@@ -46,15 +47,21 @@ export default function ExamInterface({ examId }: ExamInterfaceProps) {
     const [showReviewModal, setShowReviewModal] = useState(false);
     const [showLeaveConfirm, setShowLeaveConfirm] = useState(false);
     const [isLeaveSubmitting, setIsLeaveSubmitting] = useState(false);
+    const [errorModal, setErrorModal] = useState<{ message: string } | null>(null);
     const timeExpiredSubmittedRef = useRef(false);
+
+    const handleErrorModalClose = useCallback(() => {
+        setErrorModal(null);
+        router.push("/dashboard/latihan-ujian");
+    }, [router]);
 
     useEffect(() => {
         const initExam = async () => {
             try {
                 const sessionRes = await startExamSession(examId);
                 if (!sessionRes.sessionId) {
-                    alert(sessionRes.message || "Gagal memulai ujian");
-                    router.push("/dashboard/latihan-ujian");
+                    setErrorModal({ message: sessionRes.message || "Gagal memulai ujian" });
+                    setLoading(false);
                     return;
                 }
                 setSessionId(sessionRes.sessionId);
@@ -62,8 +69,8 @@ export default function ExamInterface({ examId }: ExamInterfaceProps) {
 
                 const data = await getExamSession(sessionRes.sessionId);
                 if (!data) {
-                    alert("Gagal memuat data ujian.");
-                    router.push("/dashboard/latihan-ujian");
+                    setErrorModal({ message: "Gagal memuat data ujian." });
+                    setLoading(false);
                     return;
                 }
 
@@ -81,8 +88,8 @@ export default function ExamInterface({ examId }: ExamInterfaceProps) {
                 setLoading(false);
             } catch (error) {
                 console.error("Error initializing exam:", error);
-                alert("Terjadi kesalahan. Silakan coba lagi.");
-                router.push("/dashboard/latihan-ujian");
+                setErrorModal({ message: "Terjadi kesalahan. Silakan coba lagi." });
+                setLoading(false);
             }
         };
 
@@ -208,6 +215,44 @@ export default function ExamInterface({ examId }: ExamInterfaceProps) {
         });
     };
 
+    if (errorModal) {
+        return (
+            <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-neutral-light/80">
+                <div
+                    className="bg-white rounded-2xl shadow-xl border border-neutral-warm/20 max-w-md w-full overflow-hidden"
+                    role="dialog"
+                    aria-modal="true"
+                    aria-labelledby="exam-error-title"
+                    aria-describedby="exam-error-desc"
+                    onClick={(e) => e.stopPropagation()}
+                >
+                    <div className="p-6 text-center sm:text-left">
+                        <div className="flex justify-center sm:justify-start">
+                            <div className="flex h-12 w-12 items-center justify-center rounded-full bg-amber-100 text-amber-600 shrink-0">
+                                <Info className="w-6 h-6" aria-hidden />
+                            </div>
+                        </div>
+                        <h2 id="exam-error-title" className="mt-4 text-lg font-bold text-text-dark">
+                            Tidak Dapat Memulai Ujian
+                        </h2>
+                        <p id="exam-error-desc" className="mt-2 text-sm text-text-dark/80 leading-relaxed">
+                            {errorModal.message}
+                        </p>
+                    </div>
+                    <div className="px-6 py-4 border-t border-neutral-warm/20 bg-neutral-light/20 flex justify-end">
+                        <button
+                            type="button"
+                            onClick={handleErrorModalClose}
+                            className="px-5 py-2.5 rounded-xl bg-accent-earthy text-white font-semibold hover:bg-accent-earthy/90 transition-colors shadow-sm"
+                        >
+                            Kembali ke Daftar Ujian
+                        </button>
+                    </div>
+                </div>
+            </div>
+        );
+    }
+
     if (loading) {
         return (
             <div className="flex h-96 items-center justify-center">
@@ -320,7 +365,7 @@ export default function ExamInterface({ examId }: ExamInterfaceProps) {
                                 </label>
                                 <textarea
                                     id={`answer-${currentQuestion.id}`}
-                                    className="w-full p-4 rounded-xl border-2 border-neutral-warm/30 focus:border-accent-earthy focus:ring-2 focus:ring-accent-earthy/20 min-h-[180px] text-base leading-relaxed transition-all duration-200"
+                                    className="w-full p-4 rounded-xl border-2 border-neutral-warm/30 focus:border-accent-earthy focus:ring-2 focus:ring-accent-earthy/20 min-h-[180px] text-base leading-relaxed transition-all duration-200 bg-white text-text-dark placeholder:text-text-dark/50"
                                     placeholder="Ketik jawaban Anda di sini..."
                                     value={answers[currentQuestion.id] || ""}
                                     onChange={(e) =>

@@ -29,7 +29,19 @@ type ExamRow = {
   category: string | null;
   isActive: boolean | null;
   createdAt: Date | null;
+  availableStart?: Date | string | null;
+  availableEnd?: Date | string | null;
 };
+
+/** Format satu tanggal+waktu: "23 Feb 2026 • 11:47" */
+function formatJadwalItem(d: Date | string | null | undefined): string {
+  if (d == null) return '—';
+  const date = typeof d === 'string' ? new Date(d) : d;
+  if (isNaN(date.getTime())) return '—';
+  const datePart = date.toLocaleDateString('id-ID', { day: 'numeric', month: 'short', year: 'numeric' });
+  const timePart = date.toLocaleTimeString('id-ID', { hour: '2-digit', minute: '2-digit', hour12: false });
+  return `${datePart} • ${timePart}`;
+}
 
 type ExamCounts = { questionCount: number; participantCount: number };
 
@@ -105,15 +117,15 @@ export default function ExamCard({ exam, counts, typeLabel }: ExamCardProps) {
           className="block p-5 pr-12 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent-earthy focus-visible:ring-inset"
         >
           <span
-            className={`inline-block text-xs font-bold px-2 py-1 rounded shrink-0 mb-3
+            className={`inline-block text-xs font-bold px-2 py-1 rounded shrink-0 mb-2
                             ${exam.isActive ? 'bg-emerald-100 text-emerald-800 ring-1 ring-emerald-200' : 'bg-gray-100 text-gray-600'}`}
           >
             {exam.isActive ? 'Aktif' : 'Nonaktif'}
           </span>
-          <h3 className="font-bold text-text-dark text-lg mb-0.5 group-hover:text-accent-earthy transition-colors">
+          <h3 className="font-bold text-text-dark text-lg mb-1 group-hover:text-accent-earthy transition-colors">
             {exam.title}
           </h3>
-          <p className="text-text-dark/60 text-sm mb-4">{subtitle}</p>
+          <p className="text-text-dark/60 text-sm mb-3">{subtitle}</p>
           <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-sm text-text-dark/70">
             <span className="flex items-center gap-1">
               <Clock className="w-4 h-4 text-accent-earthy shrink-0" />
@@ -124,6 +136,24 @@ export default function ExamCard({ exam, counts, typeLabel }: ExamCardProps) {
               {counts.questionCount} Soal
             </span>
           </div>
+          {(exam.availableStart != null || exam.availableEnd != null) && (
+            <div className="mt-3 pt-3 border-t border-neutral-warm/20 space-y-1.5">
+              {exam.availableStart != null && (
+                <p className="flex items-center gap-2 text-xs text-text-dark/70">
+                  <span className="size-2 rounded-full bg-emerald-500 shrink-0" aria-hidden />
+                  <span className="text-text-dark/60">Buka:</span>
+                  <span>{formatJadwalItem(exam.availableStart)}</span>
+                </p>
+              )}
+              {exam.availableEnd != null && (
+                <p className="flex items-center gap-2 text-xs text-text-dark/70">
+                  <span className="size-2 rounded-full bg-red-500 shrink-0" aria-hidden />
+                  <span className="text-text-dark/60">Tutup:</span>
+                  <span>{formatJadwalItem(exam.availableEnd)}</span>
+                </p>
+              )}
+            </div>
+          )}
         </Link>
         <div className="absolute top-3 right-3 z-10" ref={menuRef}>
           <button

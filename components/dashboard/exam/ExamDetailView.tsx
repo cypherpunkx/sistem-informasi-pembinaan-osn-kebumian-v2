@@ -40,6 +40,8 @@ type Exam = {
     isActive: boolean | null;
     createdAt: Date | null;
     updatedAt: Date | null;
+    availableStart?: Date | string | null;
+    availableEnd?: Date | string | null;
 };
 
 type QuestionRow = { id: number; content: string | null };
@@ -60,6 +62,16 @@ function formatDate(d: Date | null): string {
         month: "short",
         year: "numeric",
     });
+}
+
+/** Format tanggal+waktu: "23 Feb 2026 • 11:47" */
+function formatDateTime(d: Date | string | null | undefined): string {
+    if (d == null) return "—";
+    const date = typeof d === "string" ? new Date(d) : d;
+    if (isNaN(date.getTime())) return "—";
+    const datePart = date.toLocaleDateString("id-ID", { day: "numeric", month: "short", year: "numeric" });
+    const timePart = date.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", hour12: false });
+    return `${datePart} • ${timePart}`;
 }
 
 function stripHtml(html: string): string {
@@ -328,27 +340,41 @@ export default function ExamDetailView({
                             </h2>
                             <hr className="border-neutral-warm/40 mb-4" />
                             <dl className="space-y-0">
-                                <div className="flex items-center gap-3 py-3 border-b border-neutral-warm/30">
+                                <div className="flex items-center gap-3 py-3.5 border-b border-neutral-warm/30">
                                     <Clock className="w-4 h-4 text-accent-earthy shrink-0" aria-hidden />
                                     <dt className="text-sm text-text-dark/60 w-32 shrink-0">Durasi</dt>
                                     <dd className="text-sm font-medium text-text-dark">{exam.duration} Menit</dd>
                                 </div>
-                                <div className="flex items-center gap-3 py-3 border-b border-neutral-warm/30">
+                                <div className="flex items-center gap-3 py-3.5 border-b border-neutral-warm/30">
                                     <ListOrdered className="w-4 h-4 text-accent-earthy shrink-0" aria-hidden />
                                     <dt className="text-sm text-text-dark/60 w-32 shrink-0">Mode Soal</dt>
                                     <dd className="text-sm font-medium text-text-dark">{typeLabel}</dd>
                                 </div>
-                                <div className="flex items-center gap-3 py-3 border-b border-neutral-warm/30">
+                                <div className="flex items-center gap-3 py-3.5 border-b border-neutral-warm/30">
                                     <Tag className="w-4 h-4 text-accent-earthy shrink-0" aria-hidden />
                                     <dt className="text-sm text-text-dark/60 w-32 shrink-0">Kategori</dt>
                                     <dd className="text-sm font-medium text-text-dark">{exam.category || "—"}</dd>
                                 </div>
-                                <div className="flex items-center gap-3 py-3 border-b border-neutral-warm/30">
+                                <div className="flex items-center gap-3 py-3.5 border-b border-neutral-warm/30">
+                                    <span className="size-2 rounded-full bg-emerald-500 shrink-0" aria-hidden />
+                                    <dt className="text-sm text-text-dark/60 w-32 shrink-0">Dibuka</dt>
+                                    <dd className="text-sm font-medium text-text-dark">
+                                        {exam.availableStart != null ? formatDateTime(exam.availableStart) : "—"}
+                                    </dd>
+                                </div>
+                                <div className="flex items-center gap-3 py-3.5 border-b border-neutral-warm/30">
+                                    <span className="size-2 rounded-full bg-red-500 shrink-0" aria-hidden />
+                                    <dt className="text-sm text-text-dark/60 w-32 shrink-0">Ditutup</dt>
+                                    <dd className="text-sm font-medium text-text-dark">
+                                        {exam.availableEnd != null ? formatDateTime(exam.availableEnd) : "—"}
+                                    </dd>
+                                </div>
+                                <div className="flex items-center gap-3 py-3.5 border-b border-neutral-warm/30">
                                     <Calendar className="w-4 h-4 text-accent-earthy shrink-0" aria-hidden />
                                     <dt className="text-sm text-text-dark/60 w-32 shrink-0">Dibuat</dt>
                                     <dd className="text-sm font-medium text-text-dark">{formatDate(exam.createdAt)}</dd>
                                 </div>
-                                <div className="flex items-center gap-3 py-3">
+                                <div className="flex items-center gap-3 py-3.5">
                                     <RefreshCw className="w-4 h-4 text-accent-earthy shrink-0" aria-hidden />
                                     <dt className="text-sm text-text-dark/60 w-32 shrink-0">Terakhir update</dt>
                                     <dd className="text-sm font-medium text-text-dark">{formatDate(exam.updatedAt)}</dd>
@@ -360,37 +386,62 @@ export default function ExamDetailView({
 
                 {activeTab === "soal" && (
                     <section>
-                        <h2 className="text-sm font-semibold text-text-dark/80 mb-3">
-                            Daftar Soal ({questionsList.length})
-                        </h2>
-                        <ul className="divide-y divide-neutral-warm/30 border border-neutral-warm/40 rounded-xl overflow-hidden bg-white shadow-sm">
-                            {questionsList.length === 0 ? (
-                                <li className="px-4 py-6 text-center text-sm text-text-dark/60">
-                                    Belum ada soal.
-                                </li>
-                            ) : (
-                                questionsList.map((q, i) => (
-                                    <li
-                                        key={q.id}
-                                        className="px-4 py-3 text-sm text-text-dark flex gap-2"
-                                    >
-                                        <span className="font-medium text-text-dark/70 shrink-0">
-                                            {i + 1}.
-                                        </span>
-                                        <span className="line-clamp-1">
-                                            {q.content ? stripHtml(q.content) : "—"}
-                                        </span>
-                                    </li>
-                                ))
-                            )}
-                        </ul>
-                        <Link
-                            href={`/dashboard/manajemen-ujian/edit/${exam.id}`}
-                            className="inline-flex items-center gap-2 mt-4 px-4 py-2.5 text-sm font-medium text-accent-earthy border border-accent-earthy/50 rounded-xl hover:bg-accent-earthy/10 transition-colors"
-                        >
-                            <Plus className="w-4 h-4" />
-                            Tambah Soal
-                        </Link>
+                        {exam.type === "DYNAMIC" ? (
+                            <>
+                                <h2 className="text-sm font-semibold text-text-dark/80 mb-3">
+                                    Paket dinamis ({questionCount} soal)
+                                </h2>
+                                <div className="border border-neutral-warm/40 rounded-xl overflow-hidden bg-white shadow-sm px-4 py-6">
+                                    <p className="text-sm text-text-dark/80 mb-2">
+                                        Soal tidak ditentukan di sini. Sebanyak <strong>{questionCount} soal</strong> akan diambil secara acak dari bank soal sesuai filter (topik &amp; tingkat kesulitan) saat peserta mengklik &quot;Mulai ujian&quot;.
+                                    </p>
+                                    <p className="text-sm text-text-dark/60">
+                                        Untuk mengubah jumlah soal atau filter, gunakan tombol di bawah.
+                                    </p>
+                                </div>
+                                <Link
+                                    href={`/dashboard/manajemen-ujian/edit/${exam.id}`}
+                                    className="inline-flex items-center gap-2 mt-4 px-4 py-2.5 text-sm font-medium text-accent-earthy border border-accent-earthy/50 rounded-xl hover:bg-accent-earthy/10 transition-colors"
+                                >
+                                    <Pencil className="w-4 h-4" />
+                                    Ubah filter / jumlah soal
+                                </Link>
+                            </>
+                        ) : (
+                            <>
+                                <h2 className="text-sm font-semibold text-text-dark/80 mb-3">
+                                    Daftar Soal ({questionsList.length})
+                                </h2>
+                                <ul className="divide-y divide-neutral-warm/30 border border-neutral-warm/40 rounded-xl overflow-hidden bg-white shadow-sm">
+                                    {questionsList.length === 0 ? (
+                                        <li className="px-4 py-6 text-center text-sm text-text-dark/60">
+                                            Belum ada soal.
+                                        </li>
+                                    ) : (
+                                        questionsList.map((q, i) => (
+                                            <li
+                                                key={q.id}
+                                                className="px-4 py-3 text-sm text-text-dark flex gap-2"
+                                            >
+                                                <span className="font-medium text-text-dark/70 shrink-0">
+                                                    {i + 1}.
+                                                </span>
+                                                <span className="line-clamp-1">
+                                                    {q.content ? stripHtml(q.content) : "—"}
+                                                </span>
+                                            </li>
+                                        ))
+                                    )}
+                                </ul>
+                                <Link
+                                    href={`/dashboard/manajemen-ujian/edit/${exam.id}`}
+                                    className="inline-flex items-center gap-2 mt-4 px-4 py-2.5 text-sm font-medium text-accent-earthy border border-accent-earthy/50 rounded-xl hover:bg-accent-earthy/10 transition-colors"
+                                >
+                                    <Plus className="w-4 h-4" />
+                                    Tambah Soal
+                                </Link>
+                            </>
+                        )}
                     </section>
                 )}
 

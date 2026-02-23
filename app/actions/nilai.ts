@@ -36,7 +36,9 @@ export async function getStudentExamSessions(filters: ExamSessionFilters = {}) {
             return { data: [], total: 0, page: 1, limit: 20, totalPages: 0 };
         }
 
-        const { studentId, examId, startDate, endDate, hasFeedback, page = 1, limit = 20 } = filters;
+        const { studentId, examId, startDate, endDate, hasFeedback, page: rawPage = 1, limit: rawLimit = 20 } = filters;
+        const limit = Math.max(1, Math.min(100, rawLimit));
+        const page = Math.max(1, rawPage);
 
         // Build where conditions
         const conditions = [eq(examSessions.status, "COMPLETED")];

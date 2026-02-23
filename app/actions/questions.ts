@@ -160,6 +160,9 @@ export async function createQuestion(_prevState: unknown, formData: FormData) {
     if (!currentUser) {
         return { success: false, message: "User not found" };
     }
+    if (currentUser.role === "peserta") {
+        return { success: false, message: "Peserta hanya boleh mengerjakan ujian." };
+    }
 
     const requestedStatus = (formData.get("status") || "DRAFT") as "DRAFT" | "PENDING" | "PUBLISHED" | "ARCHIVED";
 
@@ -230,6 +233,9 @@ export async function updateQuestion(id: number, formData: FormData) {
     if (!currentUser) {
         return { success: false, message: "User not found" };
     }
+    if (currentUser.role === "peserta") {
+        return { success: false, message: "Peserta hanya boleh mengerjakan ujian." };
+    }
 
     const requestedStatus = (formData.get("status") || "DRAFT") as "DRAFT" | "PENDING" | "PUBLISHED" | "ARCHIVED";
 
@@ -291,6 +297,12 @@ export async function updateQuestion(id: number, formData: FormData) {
 }
 
 export async function deleteQuestion(id: number) {
+    const session = await auth();
+    if (!session?.user?.id) return { success: false, message: "Unauthorized" };
+    const currentUser = await db.query.users.findFirst({
+        where: eq(users.id, parseInt(String(session.user.id), 10)),
+    });
+    if (currentUser?.role === "peserta") return { success: false, message: "Peserta hanya boleh mengerjakan ujian." };
     try {
         await db.delete(optionsTable).where(eq(optionsTable.questionId, id));
         await db.delete(questions).where(eq(questions.id, id));
@@ -303,6 +315,16 @@ export async function deleteQuestion(id: number) {
 }
 
 export async function updateQuestionStatus(id: number, status: "DRAFT" | "PENDING" | "PUBLISHED" | "ARCHIVED") {
+    const session = await auth();
+    if (!session?.user?.id) return { success: false, message: "Unauthorized" };
+    const currentUser = await db.query.users.findFirst({
+        where: eq(users.id, parseInt(String(session.user.id), 10)),
+    });
+    if (!currentUser) return { success: false, message: "User not found" };
+    if (status === "PUBLISHED" && currentUser.role !== "admin") {
+        return { success: false, message: "Hanya admin yang dapat menerbitkan (publish) soal." };
+    }
+    if (currentUser.role === "peserta") return { success: false, message: "Peserta hanya boleh mengerjakan ujian." };
     try {
         await db.update(questions).set({ status }).where(eq(questions.id, id));
         revalidatePath("/dashboard/bank-soal");

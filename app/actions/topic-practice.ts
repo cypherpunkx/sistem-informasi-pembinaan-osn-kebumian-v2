@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { exams, examQuestions, questions } from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, gte, sql } from "drizzle-orm";
 import { auth } from "@/auth";
 import { revalidatePath } from "next/cache";
 import { fisherYatesShuffle } from "@/lib/utils";
@@ -19,6 +19,26 @@ export async function createTopicPracticeExam(
     const trimmedTopic = topic.trim();
     if (!trimmedTopic) {
         return { success: false, message: "Topik tidak valid." };
+    }
+
+    const userId = parseInt(String(session.user.id), 10);
+    if (Number.isNaN(userId)) {
+        return { success: false, message: "Unauthorized" };
+    }
+
+    const twentyFourHoursAgo = new Date();
+    twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+    const recentCount = await db
+        .select({ count: sql<number>`count(*)` })
+        .from(exams)
+        .where(and(
+            eq(exams.category, "Latihan Topik"),
+            eq(exams.createdBy, userId),
+            gte(exams.createdAt, twentyFourHoursAgo)
+        ));
+    const count = Number(recentCount[0]?.count ?? 0);
+    if (count >= 10) {
+        return { success: false, message: "Batas pembuatan latihan topik: 10 per hari. Coba lagi besok." };
     }
 
     try {
@@ -47,6 +67,7 @@ export async function createTopicPracticeExam(
                 type: "FIXED",
                 category: "Latihan Topik",
                 isActive: true,
+                createdBy: userId,
             })
             .$returningId();
 

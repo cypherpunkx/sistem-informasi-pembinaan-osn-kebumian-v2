@@ -1,22 +1,26 @@
 import Link from 'next/link';
+import { redirect } from 'next/navigation';
 import { CheckCircle, XCircle, ChevronLeft, RefreshCcw } from 'lucide-react';
+import { getExamResult } from '@/app/actions/exams';
 
 export default async function ExamResultPage({
   params,
-  searchParams,
 }: {
   params: Promise<{ id: string }>;
-  searchParams?: Promise<{ score?: string; session?: string }>;
 }) {
   const resolvedParams = await params;
-  const resolvedSearchParams = await searchParams;
-  const examId = parseInt(resolvedParams.id);
-  const scoreArg = resolvedSearchParams?.score;
-  // Ideally we fetch the session to get detailed stats
-
-  // For now, rely on simpler display or fetch last session
-  // Let's assume passed score is valid for quick feedback
-  const score = scoreArg ? parseInt(scoreArg) : 0;
+  // Redirect dari ExamInterface mengirim result/{sessionId}; [id] = sessionId
+  const sessionId = parseInt(resolvedParams.id, 10);
+  if (Number.isNaN(sessionId) || sessionId <= 0) {
+    redirect('/dashboard/latihan-ujian');
+  }
+  const result = await getExamResult(sessionId);
+  if (!result.success || !result.session || !result.exam) {
+    redirect('/dashboard/latihan-ujian');
+  }
+  const score = result.session.score ?? 0;
+  const examId = result.exam.id;
+  const tryAgainHref = `/dashboard/latihan-ujian/${examId}`;
 
   // Determine grade/color
   let gradeColor = 'text-red-600';
@@ -64,10 +68,10 @@ export default async function ExamResultPage({
           <ChevronLeft className="w-4 h-4" /> Back to List
         </Link>
         <Link
-          href={`/dashboard/latihan-ujian/${examId}`}
+          href={tryAgainHref}
           className="flex items-center gap-2 px-6 py-2 bg-accent-earthy text-white font-bold rounded-lg hover:bg-text-dark transition-colors"
         >
-          <RefreshCcw className="w-4 h-4" /> Try Again
+          <RefreshCcw className="w-4 h-4" /> Coba Lagi
         </Link>
       </div>
     </div>

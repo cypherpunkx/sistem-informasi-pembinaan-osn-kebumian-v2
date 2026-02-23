@@ -2,7 +2,7 @@
 
 import { db } from "@/lib/db";
 import { questions, examAnswers, examSessions, materials } from "@/lib/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, inArray } from "drizzle-orm";
 import { auth } from "@/auth";
 
 export interface TopicAccuracy {
@@ -19,6 +19,16 @@ export interface Recommendation {
     priority: "HIGH" | "MEDIUM" | "LOW";
     message: string;
     materials: { id: number; title: string; url: string | null; topic: string; type: string; status: string; createdAt: Date | null }[];
+}
+
+/** Variant topik untuk matching materi: exact + tanpa prefix "Kebumian: " agar materi dengan topik "Geologi" tetap ketemu. */
+function getTopicVariantsForMaterial(topic: string): string[] {
+    const t = (topic || "").trim();
+    if (!t) return [];
+    const normalized = t.replace(/^Kebumian:\s*/i, "").trim();
+    const set = new Set<string>([t]);
+    if (normalized && normalized !== t) set.add(normalized);
+    return Array.from(set);
 }
 
 /** Get topic accuracy for a user. If userId is passed, caller must be pembina/admin; otherwise uses current user. */
@@ -51,13 +61,15 @@ export async function getTopicAccuracy(requestedUserId?: string): Promise<TopicA
             }
             const data = accMap.get(topic)!;
             data.total++;
-            if (row.isCorrect) data.correct++;
+            if (row.isCorrect === true) data.correct++;
         }
 
-        // 3. Calculate Accuracy & Priority
+        // 3. Calculate Accuracy & Priority (hanya dari data penilaian nyata; tidak pakai dummy)
         const results: TopicAccuracy[] = [];
         accMap.forEach((data, topic) => {
-            const accuracy = (data.correct / data.total) * 100;
+            const total = data.total;
+            const correct = data.correct;
+            const accuracy = total > 0 ? (correct / total) * 100 : 0;
             let priority: "HIGH" | "MEDIUM" | "LOW" = "LOW";
 
             if (accuracy < 50) priority = "HIGH";
@@ -65,37 +77,12 @@ export async function getTopicAccuracy(requestedUserId?: string): Promise<TopicA
 
             results.push({
                 topic,
-                totalQuestions: data.total,
-                correctAnswers: data.correct,
+                totalQuestions: total,
+                correctAnswers: correct,
                 accuracy,
                 priority
             });
         });
-
-        // Dummy data hanya bila belum ada data ujian, agar tidak duplikat dengan topik dari DB (e.g. Geology vs Geologi)
-        if (results.length === 0) {
-            results.push({
-                topic: "Kebumian: Geologi",
-                totalQuestions: 15,
-                correctAnswers: 7,
-                accuracy: 46.7,
-                priority: "HIGH"
-            });
-            results.push({
-                topic: "Kebumian: Meteorologi",
-                totalQuestions: 10,
-                correctAnswers: 5,
-                accuracy: 50,
-                priority: "MEDIUM"
-            });
-            results.push({
-                topic: "Kebumian: Oseanografi",
-                totalQuestions: 8,
-                correctAnswers: 6,
-                accuracy: 75,
-                priority: "MEDIUM"
-            });
-        }
 
         // Sort by Priority (High first) then Accuracy (Ascending)
         return results.sort((a, b) => {
@@ -131,16 +118,17 @@ export async function getRecommendations(requestedUserId?: string): Promise<Reco
             message = "Pertahankan performa ini!";
         }
 
-        // Fetch related materials for High/Medium priority
+        // Fetch related materials for High/Medium priority (match exact + normalized topic)
         let relatedMaterials: { id: number; title: string; url: string | null; topic: string; type: string; status: string; createdAt: Date | null }[] = [];
         if (item.priority !== "LOW") {
-            relatedMaterials = await db.select()
-                .from(materials)
-                .where(and(
-                    eq(materials.topic, item.topic),
-                    eq(materials.status, "PUBLISHED")
-                ))
-                .limit(3);
+            const topicVariants = getTopicVariantsForMaterial(item.topic);
+            if (topicVariants.length > 0) {
+                relatedMaterials = await db
+                    .select()
+                    .from(materials)
+                    .where(and(inArray(materials.topic, topicVariants), eq(materials.status, "PUBLISHED")))
+                    .limit(3);
+            }
         }
 
         recommendations.push({
