@@ -139,7 +139,6 @@ export const navCards = mysqlTable("nav_cards", {
 },
     (table) => [
         primaryKey({ columns: [table.id], name: "nav_cards_id" }),
-        unique("id").on(table.id),
     ]);
 
 export const news = mysqlTable("news", {
@@ -161,7 +160,6 @@ export const news = mysqlTable("news", {
 },
     (table) => [
         primaryKey({ columns: [table.id], name: "news_id" }),
-        unique("id").on(table.id),
         unique("news_slug_unique").on(table.slug),
     ]);
 
@@ -172,7 +170,6 @@ export const newsViews = mysqlTable("news_views", {
 },
     (table) => [
         primaryKey({ columns: [table.id], name: "news_views_id" }),
-        unique("id").on(table.id),
     ]);
 
 export const pageSections = mysqlTable("page_sections", {
@@ -185,7 +182,6 @@ export const pageSections = mysqlTable("page_sections", {
 },
     (table) => [
         primaryKey({ columns: [table.id], name: "page_sections_id" }),
-        unique("id").on(table.id),
     ]);
 
 export const pages = mysqlTable("pages", {
@@ -201,7 +197,6 @@ export const pages = mysqlTable("pages", {
 },
     (table) => [
         primaryKey({ columns: [table.id], name: "pages_id" }),
-        unique("id").on(table.id),
         unique("pages_slug_unique").on(table.slug),
     ]);
 
@@ -238,6 +233,5 @@ export const soalArchives = mysqlTable("soal_archives", {
 },
     (table) => [
         primaryKey({ columns: [table.id], name: "soal_archives_id" }),
-        unique("id").on(table.id),
     ]);
 

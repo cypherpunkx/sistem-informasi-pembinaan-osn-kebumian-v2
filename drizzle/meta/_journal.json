@@ -1,1 +1,13 @@
-{"version":"7","dialect":"mysql","entries":[{"idx":0,"version":"5","when":1771382459398,"tag":"0000_jazzy_rocket_raccoon","breakpoints":true},{"idx":1,"version":"5","when":1771388068323,"tag":"0001_add_topics","breakpoints":true},{"idx":2,"version":"5","when":1730000000000,"tag":"0003_add_exams_created_by","breakpoints":true}]}
+{
+  "version": "7",
+  "dialect": "mysql",
+  "entries": [
+    {
+      "idx": 0,
+      "version": "5",
+      "when": 1773430356943,
+      "tag": "0000_bumpy_klaw",
+      "breakpoints": true
+    }
+  ]
+}

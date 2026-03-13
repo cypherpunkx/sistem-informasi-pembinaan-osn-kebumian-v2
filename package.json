@@ -10,8 +10,13 @@
     "db:seed": "tsx scripts/seed-questions.ts",
     "db:seed:topics": "tsx scripts/seed-topics.ts",
     "db:seed:all": "tsx scripts/seed-all.ts",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "drizzle-kit migrate",
     "db:push": "drizzle-kit push",
-    "db:generate": "drizzle-kit generate"
+    "db:pull": "drizzle-kit pull",
+    "db:check": "drizzle-kit check",
+    "db:up": "drizzle-kit up",
+    "db:studio": "drizzle-kit studio"
   },
   "dependencies": {
     "bcryptjs": "^3.0.3",
