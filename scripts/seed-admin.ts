@@ -24,7 +24,7 @@ async function getDb() {
     if (!process.env.DATABASE_URL) {
         throw new Error("DATABASE_URL is not set");
     }
-    const connection = await mysql.createPool({ uri: process.env.DATABASE_URL });
+    const connection = mysql.createPool({ uri: process.env.DATABASE_URL });
     const db = drizzle(connection);
     return { db, connection };
 }
